@@ -1,0 +1,23 @@
+app = "aiuxtester"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+  DATABASE_PATH = "/data/aiuxtester.db"
+  ACCESS_TOKEN_EXPIRE_MINUTES = "30"
+  REFRESH_TOKEN_EXPIRE_DAYS = "30"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+[[mounts]]
+  source = "aiuxtester_data"
+  destination = "/data"
