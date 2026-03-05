@@ -15,7 +15,16 @@ class BrowserManager:
 
     async def launch(self, mode: Literal["desktop", "mobile"]) -> Tuple[Browser, Page]:
         self._pw = await async_playwright().start()
-        launch_kwargs = {"headless": True}
+        launch_kwargs = {
+            "headless": True,
+            # Required on some constrained/containerized hosts (including Fly microVMs).
+            "args": [
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+            ],
+        }
         executable = self._find_chromium_executable()
         if executable:
             launch_kwargs["executable_path"] = executable

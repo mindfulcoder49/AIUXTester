@@ -17,6 +17,7 @@ env/
 # Local config / secrets
 .env
 .env.local
+.env.fly
 
 # Databases / runtime artifacts
 *.db

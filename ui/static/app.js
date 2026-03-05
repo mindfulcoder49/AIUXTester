@@ -67,6 +67,74 @@ async function loadUser() {
   }
 }
 
+const Home = {
+  template: `
+    <div class="home">
+      <section class="panel glass hero">
+        <div class="hero-shape hero-shape-a"></div>
+        <div class="hero-shape hero-shape-b"></div>
+        <p class="eyebrow">AIUXTester</p>
+        <h1>Autonomous Website Testing For Real User Flows</h1>
+        <p class="lead">
+          Drive websites with agentic browser automation, stream every action, and generate structured postmortems across OpenAI, Gemini, and Claude.
+        </p>
+        <div class="hero-links">
+          <a href="#/docs">Documentation</a>
+          <a href="#/costs">Cost Model</a>
+        </div>
+        <button class="cta" @click="cta">{{ store.token ? "Open Dashboard" : "Get Started" }}</button>
+      </section>
+
+      <section class="panel">
+        <h2>Quick Start</h2>
+        <ol class="flat-list ordered">
+          <li>Enter the website you want to explore.</li>
+          <li>{{ store.token ? "You are logged in. Continue to dashboard." : "Log in to run agent sessions." }}</li>
+          <li>Describe the task you want: <code>explore this website and try to accomplish it's primary use case</code>.</li>
+        </ol>
+      </section>
+    </div>
+  `,
+  setup() {
+    const cta = () => router.push(store.token ? "/app" : "/login");
+    return { store, cta };
+  },
+};
+
+const Docs = {
+  template: `
+    <div class="docs">
+      <header>
+        <button @click="back">Back</button>
+        <h2>Documentation</h2>
+      </header>
+      <section class="panel">
+        <h3>What The App Does</h3>
+        <ul class="flat-list">
+          <li>Runs browser sessions with Playwright in desktop or mobile mode.</li>
+          <li>Uses LLM-selected actions and streams each step live.</li>
+          <li>Saves action history, screenshots, logs, memory, and sanitized HTML.</li>
+          <li>Generates postmortem analysis from run state and page HTML.</li>
+        </ul>
+      </section>
+      <section class="panel">
+        <h3>Quick Start Guide</h3>
+        <ol class="flat-list ordered">
+          <li>Enter the website you want to explore.</li>
+          <li>Log in.</li>
+          <li>In New Session, describe the task you want.</li>
+          <li>Suggested task: <code>explore this website and try to accomplish it's primary use case</code>.</li>
+          <li>Review stream, logs, and postmortem after completion.</li>
+        </ol>
+      </section>
+    </div>
+  `,
+  setup() {
+    const back = () => router.push("/");
+    return { back };
+  },
+};
+
 function formatPostmortemValue(value) {
   if (value == null) return "";
   if (typeof value === "string") return value;
@@ -101,7 +169,7 @@ const Login = {
       store.token = data.access_token;
       localStorage.setItem("access_token", store.token);
       await loadUser();
-      router.push("/");
+      router.push("/app");
     };
     return { email, password, submit };
   },
@@ -131,7 +199,7 @@ const Register = {
       store.token = data.access_token;
       localStorage.setItem("access_token", store.token);
       await loadUser();
-      router.push("/");
+      router.push("/app");
     };
     return { email, password, submit };
   },
@@ -146,7 +214,10 @@ const Dashboard = {
           <p>Signed in as {{ store.user?.email }} ({{ store.user?.tier }})</p>
         </div>
         <div class="actions">
+          <button @click="goHome">Home</button>
+          <button @click="goDocs">Docs</button>
           <button @click="logout">Logout</button>
+          <button @click="goCosts">Cost</button>
           <button v-if="store.user?.role === 'admin'" @click="goAdmin">Admin</button>
         </div>
       </header>
@@ -305,11 +376,14 @@ const Dashboard = {
       store.token = "";
       localStorage.removeItem("access_token");
       store.user = null;
-      router.push("/login");
+      router.push("/");
     };
 
     const openSession = (id) => router.push(`/sessions/${id}`);
     const goAdmin = () => router.push("/admin");
+    const goCosts = () => router.push("/costs");
+    const goHome = () => router.push("/");
+    const goDocs = () => router.push("/docs");
 
     onMounted(async () => {
       await loadSessions();
@@ -332,6 +406,9 @@ const Dashboard = {
       logout,
       openSession,
       goAdmin,
+      goCosts,
+      goHome,
+      goDocs,
     };
   },
 };
@@ -509,7 +586,7 @@ const SessionDetail = {
       await apiRequest(`/sessions/${session.value.id}/stop`, { method: "POST" });
     };
 
-    const back = () => router.push("/");
+    const back = () => router.push("/app");
 
     onMounted(async () => {
       const id = router.currentRoute.value.params.id;
@@ -561,17 +638,150 @@ const Admin = {
         body: JSON.stringify({ tier: u.tier }),
       });
     };
-    const back = () => router.push("/");
+    const back = () => router.push("/app");
 
     onMounted(loadUsers);
     return { users, updateTier, back };
   },
 };
 
+const Costs = {
+  template: `
+    <div class="costs">
+      <header>
+        <button @click="back">Back</button>
+        <h2>Cost Model</h2>
+      </header>
+
+      <section class="panel">
+        <h3>Current Runtime Topology</h3>
+        <ul class="flat-list">
+          <li><code>aiuxtester</code>: web app machine + worker machine.</li>
+          <li><code>aiuxtester-db</code>: 1 MariaDB machine with volume.</li>
+          <li><code>aiuxtester-redis</code>: 1 Redis machine with volume.</li>
+        </ul>
+        <p class="muted">Current practical effect: core state services (DB/Redis) run continuously, and app+worker run continuously unless you manually scale down.</p>
+      </section>
+
+      <section class="panel">
+        <h3>Estimator Inputs</h3>
+        <div class="row"><label>Hours / month</label><input type="number" v-model.number="hoursPerMonth" /></div>
+        <div class="row"><label>Web VM $/hour</label><input type="number" step="0.0001" v-model.number="price.web" /></div>
+        <div class="row"><label>Worker VM $/hour</label><input type="number" step="0.0001" v-model.number="price.worker" /></div>
+        <div class="row"><label>Redis VM $/hour</label><input type="number" step="0.0001" v-model.number="price.redis" /></div>
+        <div class="row"><label>DB VM $/hour</label><input type="number" step="0.0001" v-model.number="price.db" /></div>
+      </section>
+
+      <section class="panel">
+        <h3>Scenario Comparison</h3>
+        <table class="cost-table">
+          <thead>
+            <tr>
+              <th>Scenario</th>
+              <th>Web</th>
+              <th>Worker</th>
+              <th>Redis</th>
+              <th>DB</th>
+              <th>Total / month</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Current (always-on)</td>
+              <td>{{ money(alwaysOn.web) }}</td>
+              <td>{{ money(alwaysOn.worker) }}</td>
+              <td>{{ money(alwaysOn.redis) }}</td>
+              <td>{{ money(alwaysOn.db) }}</td>
+              <td><strong>{{ money(alwaysOn.total) }}</strong></td>
+            </tr>
+            <tr>
+              <td>Scale web + worker only</td>
+              <td>{{ money(partialZero.web) }}</td>
+              <td>{{ money(partialZero.worker) }}</td>
+              <td>{{ money(partialZero.redis) }}</td>
+              <td>{{ money(partialZero.db) }}</td>
+              <td><strong>{{ money(partialZero.total) }}</strong></td>
+            </tr>
+            <tr>
+              <td>Full zero orchestration</td>
+              <td>{{ money(fullZero.web) }}</td>
+              <td>{{ money(fullZero.worker) }}</td>
+              <td>{{ money(fullZero.redis) }}</td>
+              <td>{{ money(fullZero.db) }}</td>
+              <td><strong>{{ money(fullZero.total) }}</strong></td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="muted">
+          Assumptions used: web+worker active 25% in partial mode; full orchestration active 10% for all services.
+          Update assumptions below to match your usage.
+        </p>
+        <div class="row"><label>Partial active ratio</label><input type="number" step="0.01" min="0" max="1" v-model.number="assumptions.partialActive" /></div>
+        <div class="row"><label>Full-zero active ratio</label><input type="number" step="0.01" min="0" max="1" v-model.number="assumptions.fullActive" /></div>
+      </section>
+
+      <section class="panel">
+        <h3>Scaling Notes</h3>
+        <ul class="flat-list">
+          <li>Worker scaling is straightforward: increase worker count when queue backlog grows.</li>
+          <li>Web scaling is straightforward: increase app machine count for concurrent users.</li>
+          <li>DB/Redis must stay shared and reachable by all workers to preserve correctness.</li>
+          <li>Full scale-to-zero needs orchestration logic to wake DB/Redis/worker in sequence, then gate user actions until ready.</li>
+        </ul>
+      </section>
+    </div>
+  `,
+  setup() {
+    const hoursPerMonth = ref(730);
+    const price = reactive({
+      web: 0.0080,
+      worker: 0.0080,
+      redis: 0.0040,
+      db: 0.0060,
+    });
+    const assumptions = reactive({
+      partialActive: 0.25,
+      fullActive: 0.10,
+    });
+
+    const alwaysOn = computed(() => {
+      const web = price.web * hoursPerMonth.value;
+      const worker = price.worker * hoursPerMonth.value;
+      const redis = price.redis * hoursPerMonth.value;
+      const db = price.db * hoursPerMonth.value;
+      return { web, worker, redis, db, total: web + worker + redis + db };
+    });
+
+    const partialZero = computed(() => {
+      const web = price.web * hoursPerMonth.value * assumptions.partialActive;
+      const worker = price.worker * hoursPerMonth.value * assumptions.partialActive;
+      const redis = price.redis * hoursPerMonth.value;
+      const db = price.db * hoursPerMonth.value;
+      return { web, worker, redis, db, total: web + worker + redis + db };
+    });
+
+    const fullZero = computed(() => {
+      const web = price.web * hoursPerMonth.value * assumptions.fullActive;
+      const worker = price.worker * hoursPerMonth.value * assumptions.fullActive;
+      const redis = price.redis * hoursPerMonth.value * assumptions.fullActive;
+      const db = price.db * hoursPerMonth.value * assumptions.fullActive;
+      return { web, worker, redis, db, total: web + worker + redis + db };
+    });
+
+    const money = (n) => `$${(Number(n) || 0).toFixed(2)}`;
+    const back = () => router.push("/");
+
+    return { hoursPerMonth, price, assumptions, alwaysOn, partialZero, fullZero, money, back };
+  },
+};
+
 const routes = [
+  { path: "/", component: Home },
+  { path: "/docs", component: Docs },
+  { path: "/costs", component: Costs },
   { path: "/login", component: Login },
   { path: "/register", component: Register },
-  { path: "/", component: Dashboard },
+  { path: "/app", component: Dashboard },
   { path: "/sessions/:id", component: SessionDetail },
   { path: "/admin", component: Admin },
 ];
@@ -579,8 +789,9 @@ const routes = [
 const router = createRouter({ history: createWebHashHistory(), routes });
 
 router.beforeEach(async (to) => {
+  const publicPaths = new Set(["/", "/docs", "/costs", "/login", "/register"]);
   if (!store.user) await loadUser();
-  if (!store.token && to.path !== "/login" && to.path !== "/register") return "/login";
+  if (!store.token && !publicPaths.has(to.path)) return "/login";
   if (to.path === "/admin" && store.user?.role !== "admin") return "/";
   return true;
 });

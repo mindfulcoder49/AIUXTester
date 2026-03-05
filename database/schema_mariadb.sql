@@ -103,8 +103,8 @@ CREATE TABLE IF NOT EXISTS run_logs (
     CONSTRAINT fk_run_logs_session FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE INDEX idx_sessions_user_created_at ON sessions (user_id, created_at);
-CREATE INDEX idx_actions_session_step ON actions (session_id, step_number);
-CREATE INDEX idx_screenshots_session_step ON screenshots (session_id, step_number);
-CREATE INDEX idx_html_captures_session_step ON html_captures (session_id, step_number);
-CREATE INDEX idx_run_logs_session_id ON run_logs (session_id, id);
+CREATE INDEX IF NOT EXISTS idx_sessions_user_created_at ON sessions (user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_actions_session_step ON actions (session_id, step_number);
+CREATE INDEX IF NOT EXISTS idx_screenshots_session_step ON screenshots (session_id, step_number);
+CREATE INDEX IF NOT EXISTS idx_html_captures_session_step ON html_captures (session_id, step_number);
+CREATE INDEX IF NOT EXISTS idx_run_logs_session_id ON run_logs (session_id, id);

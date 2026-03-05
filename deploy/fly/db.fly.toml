@@ -1,0 +1,13 @@
+app = "aiuxtester-db"
+primary_region = "iad"
+
+[build]
+  image = "mariadb:11.4"
+
+[env]
+  MARIADB_DATABASE = "aiuxtester"
+  MARIADB_USER = "aiuxtester"
+
+[[mounts]]
+  source = "mariadb_data"
+  destination = "/var/lib/mysql"

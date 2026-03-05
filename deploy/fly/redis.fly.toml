@@ -1,0 +1,12 @@
+app = "aiuxtester-redis"
+primary_region = "iad"
+
+[build]
+  image = "redis:7-alpine"
+
+[processes]
+  app = "sh -lc 'exec redis-server --appendonly yes --dir /data --requirepass \"$REDIS_PASSWORD\"'"
+
+[[mounts]]
+  source = "redis_data"
+  destination = "/data"
