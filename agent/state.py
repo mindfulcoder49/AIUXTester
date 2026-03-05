@@ -57,6 +57,7 @@ class AgentAction(BaseModel):
         "save_to_memory",
         "finish",
         "fail",
+        "give_up",
     ]
     params: dict
     intent: Optional[str] = None

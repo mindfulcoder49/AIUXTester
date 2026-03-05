@@ -11,6 +11,27 @@ def _signature(record: dict) -> str:
     return fingerprint(record.get("action_type", ""), record.get("action_params", {}) or {})
 
 
+def _recent_form_progress(action_history: List[dict], lookback: int = 8) -> bool:
+    if not action_history:
+        return False
+    tail = action_history[-lookback:]
+    action_types = [a.get("action_type", "") for a in tail]
+    typed = [a for a in tail if a.get("action_type") == "type" and a.get("success", True)]
+    # If we are actively entering text and taking varied actions, treat it as progress.
+    return bool(typed) and len(set(action_types)) >= 2
+
+
+def _active_form_flow(action_history: List[dict], lookback: int = 12) -> bool:
+    if not action_history:
+        return False
+    tail = action_history[-lookback:]
+    joined_urls = " ".join((a.get("url") or "").lower() for a in tail)
+    formy_url = any(token in joined_urls for token in ["/register", "/signup", "/sign-up", "/create-account"])
+    typed_recently = any(a.get("action_type") == "type" for a in tail)
+    clicked_recently = any(a.get("action_type") == "click" for a in tail)
+    return formy_url and typed_recently and clicked_recently
+
+
 def is_looping(fingerprints: List[str], rules: Dict, action_history: List[dict] | None = None) -> bool:
     if not fingerprints:
         return False
@@ -26,6 +47,12 @@ def is_looping(fingerprints: List[str], rules: Dict, action_history: List[dict] 
 
     # Avoid terminating short exploratory runs too early.
     if action_history and len(action_history) < min_actions:
+        return False
+    if _recent_form_progress(action_history):
+        return False
+    # Form completion often requires repeated same-page click/focus/type cycles.
+    # Give these flows much more runway before declaring a loop.
+    if _active_form_flow(action_history) and len(action_history) < 20:
         return False
 
     # Rule 1: same fingerprint repeated N times in window

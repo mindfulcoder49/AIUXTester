@@ -24,7 +24,7 @@ def system_prompt(goal: str, mode: str, memory: Dict[str, str], history: List[di
     rules = [
         "Coordinates must be within viewport bounds.",
         "If you see a login form and have credentials in memory, use them.",
-        "If you have taken the same action 3+ times without progress, use fail().",
+        "If you are stuck or repeating actions without meaningful progress, use give_up() with a concrete reason.",
         "If the task is complete, use finish() with a clear summary.",
         "Always include a short reasoning for the chosen action.",
         "Use save_to_memory for any credentials or facts needed later.",
@@ -48,6 +48,7 @@ def system_prompt(goal: str, mode: str, memory: Dict[str, str], history: List[di
         "- save_to_memory {key,value}\n"
         "- finish {summary}\n"
         "- fail {reason}\n\n"
+        "- give_up {reason}\n\n"
         f"## Rules\n- " + "\n- ".join(rules)
         + "\n\n## Required Output Format\n"
         + "Return ONLY valid JSON with these exact top-level keys:\n"

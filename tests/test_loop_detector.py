@@ -49,3 +49,33 @@ def test_requires_same_url_for_repeat_detection():
     ]
     fps = [fingerprint(h["action_type"], h["action_params"]) for h in history]
     assert is_looping(fps, {}, history) is False
+
+
+def test_does_not_flag_when_form_filling_progress_is_happening():
+    history = [
+        _record(1, "click", {"x": 500, "y": 210}),
+        _record(2, "type", {"text": "John"}),
+        _record(3, "click", {"x": 800, "y": 210}),
+        _record(4, "type", {"text": "Doe"}),
+        _record(5, "click", {"x": 640, "y": 335}),
+        _record(6, "click", {"x": 640, "y": 335}),
+        _record(7, "click", {"x": 640, "y": 335}),
+        _record(8, "click", {"x": 640, "y": 335}),
+    ]
+    fps = [fingerprint(h["action_type"], h["action_params"]) for h in history]
+    assert is_looping(fps, {}, history) is False
+
+
+def test_register_flow_with_repeated_clicks_gets_extra_runway():
+    history = [
+        _record(1, "click", {"x": 500, "y": 210}, "https://example.com/register"),
+        _record(2, "type", {"text": "Alex"}, "https://example.com/register"),
+        _record(3, "click", {"x": 800, "y": 210}, "https://example.com/register"),
+        _record(4, "type", {"text": "Smith"}, "https://example.com/register"),
+        _record(5, "click", {"x": 640, "y": 320}, "https://example.com/register"),
+        _record(6, "click", {"x": 640, "y": 320}, "https://example.com/register"),
+        _record(7, "click", {"x": 640, "y": 320}, "https://example.com/register"),
+        _record(8, "click", {"x": 640, "y": 320}, "https://example.com/register"),
+    ]
+    fps = [fingerprint(h["action_type"], h["action_params"]) for h in history]
+    assert is_looping(fps, {}, history) is False

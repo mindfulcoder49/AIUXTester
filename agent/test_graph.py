@@ -23,7 +23,7 @@ from llm.openai_client import OpenAIClient
 from llm.gemini_client import GeminiClient
 from llm.claude_client import ClaudeClient
 from utils.image import to_base64_png
-from utils.loop_detector import fingerprint, is_looping
+from utils.loop_detector import fingerprint
 
 
 def get_llm_client(provider: str):
@@ -233,6 +233,9 @@ def build_graph(db, emit: Callable[[dict], None]):
         elif action_type == "fail":
             state["status"] = "failed"
             state["end_reason"] = params.get("reason", "failed")
+        elif action_type == "give_up":
+            state["status"] = "failed"
+            state["end_reason"] = params.get("reason", "Agent gave up due to repeated lack of progress")
         else:
             success, error = False, f"Unknown action: {action_type}"
 
@@ -343,14 +346,6 @@ def build_graph(db, emit: Callable[[dict], None]):
             state["status"] = "stopped"
             state["end_reason"] = "Stopped by user"
             await log_event(state, "warning", "Stop requested by user")
-
-        # loop detection
-        if state["run_config"].get("loop_detection_enabled", True):
-            rules = state["run_config"].get("loop_detection_rules", {})
-            if is_looping(state["recent_action_fingerprints"], rules, state["action_history"]):
-                state["status"] = "loop_detected"
-                state["end_reason"] = "Loop detected"
-                await log_event(state, "warning", "Loop detected")
 
         if state["run_config"].get("stop_on_first_error") and state["action_history"]:
             if not state["action_history"][-1]["success"]:
