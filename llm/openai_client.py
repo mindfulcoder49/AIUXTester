@@ -125,10 +125,10 @@ class OpenAIClient:
             coerced = {}
         action = coerced.get("action")
         if not isinstance(action, str):
-            coerced["action"] = "scroll_down"
+            coerced["action"] = "execute_js"
         params = coerced.get("params")
         if not isinstance(params, dict):
-            coerced["params"] = {"pixels": 300}
+            coerced["params"] = {"script": "return 'fallback';"}
         reasoning = coerced.get("reasoning")
         if not isinstance(reasoning, str) or not reasoning.strip():
             coerced["reasoning"] = "Fallback action because the model response did not follow the required schema."
@@ -136,12 +136,30 @@ class OpenAIClient:
             coerced["memory_update"] = None
         if "intent" not in coerced:
             coerced["intent"] = "Recover from invalid model output and keep exploring."
+        self._normalize_action_params(coerced)
         return coerced
 
     def _looks_like_agent_action_schema(self, schema: Type[BaseModel]) -> bool:
         fields = getattr(schema, "model_fields", {})
         required = {"action", "params", "reasoning"}
         return required.issubset(set(fields.keys()))
+
+    def _normalize_action_params(self, action_obj: dict) -> None:
+        action = action_obj.get("action")
+        params = action_obj.get("params")
+        if not isinstance(params, dict):
+            params = {}
+            action_obj["params"] = params
+        if action == "finish" and not isinstance(params.get("summary"), str):
+            summary = action_obj.get("intent") or action_obj.get("reasoning") or "Task completed."
+            params["summary"] = str(summary)
+        elif action in {"fail", "give_up"} and not isinstance(params.get("reason"), str):
+            reason = action_obj.get("reasoning") or "Unable to proceed."
+            params["reason"] = str(reason)
+        elif action == "navigate" and not isinstance(params.get("url"), str):
+            params["url"] = "about:blank"
+        elif action == "execute_js" and not isinstance(params.get("script"), str):
+            params["script"] = "return 'fallback';"
 
     def _chat_completion_with_retries(self, **kwargs):
         max_retries = 4

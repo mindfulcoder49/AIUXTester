@@ -73,7 +73,7 @@ class BrowserManager:
         return self._page
 
     async def screenshot(self) -> bytes:
-        return await self._require_page().screenshot(full_page=False, type="png")
+        return await self._require_page().screenshot(full_page=True, type="png")
 
     async def screenshot_with_markers(self, markers: list[dict]) -> bytes:
         page = self._require_page()
@@ -158,7 +158,7 @@ class BrowserManager:
             """,
             markers,
         )
-        shot = await page.screenshot(full_page=False, type="png")
+        shot = await page.screenshot(full_page=True, type="png")
         await page.evaluate(
             """
             () => {

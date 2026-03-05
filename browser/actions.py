@@ -75,3 +75,26 @@ async def navigate(page: Page, url: str) -> Tuple[bool, str | None]:
         return True, None
     except Exception as e:
         return False, str(e)
+
+
+async def execute_javascript(page: Page, script: str) -> Tuple[bool, str | None, str | None]:
+    try:
+        result = await page.evaluate(
+            """
+            (jsCode) => {
+              const fn = new Function(jsCode);
+              const out = fn();
+              if (out === undefined || out === null) return null;
+              if (typeof out === "string") return out;
+              try {
+                return JSON.stringify(out);
+              } catch (_) {
+                return String(out);
+              }
+            }
+            """,
+            script,
+        )
+        return True, None, result
+    except Exception as e:
+        return False, str(e), None

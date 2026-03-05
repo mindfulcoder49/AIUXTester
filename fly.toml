@@ -4,9 +4,16 @@ primary_region = "iad"
 [build]
   dockerfile = "Dockerfile"
 
+[processes]
+  app = "uvicorn main:app --host 0.0.0.0 --port 8080"
+  worker = "python worker_main.py"
+
 [env]
   PORT = "8080"
-  DATABASE_PATH = "/data/aiuxtester.db"
+  DB_BACKEND = "mariadb"
+  DATABASE_URL = "mysql://aiuxtester:CHANGE_ME@db-internal.example:3306/aiuxtester"
+  QUEUE_MODE = "redis"
+  REDIS_URL = "redis://YOUR-REDIS-HOST:6379/0"
   ACCESS_TOKEN_EXPIRE_MINUTES = "30"
   REFRESH_TOKEN_EXPIRE_DAYS = "30"
 
@@ -15,9 +22,5 @@ primary_region = "iad"
   force_https = true
   auto_stop_machines = "stop"
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 2
   processes = ["app"]
-
-[[mounts]]
-  source = "aiuxtester_data"
-  destination = "/data"

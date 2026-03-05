@@ -1,5 +1,5 @@
 from typing import TypedDict, Optional, Literal, Dict, List
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 
 class ActionRecord(TypedDict):
@@ -8,6 +8,7 @@ class ActionRecord(TypedDict):
     action_params: dict
     intent: Optional[str]
     reasoning: str
+    execution_result: Optional[str]
     url: str
     success: bool
     error: Optional[str]
@@ -26,6 +27,7 @@ class AgentState(TypedDict):
     run_config: Dict
 
     current_url: str
+    current_html: str
     current_screenshot: str
     current_screenshot_id: int
     current_step: int
@@ -46,13 +48,7 @@ class AgentState(TypedDict):
 
 class AgentAction(BaseModel):
     action: Literal[
-        "scroll_down",
-        "scroll_up",
-        "swipe_left",
-        "swipe_right",
-        "click",
-        "click_and_drag",
-        "type",
+        "execute_js",
         "navigate",
         "save_to_memory",
         "finish",
@@ -63,3 +59,19 @@ class AgentAction(BaseModel):
     intent: Optional[str] = None
     reasoning: str
     memory_update: Optional[Dict[str, str]] = None
+
+    @model_validator(mode="after")
+    def validate_params_for_action(self):
+        params = self.params or {}
+        if self.action == "execute_js" and not isinstance(params.get("script"), str):
+            raise ValueError("execute_js requires params.script (string)")
+        if self.action == "navigate" and not isinstance(params.get("url"), str):
+            raise ValueError("navigate requires params.url (string)")
+        if self.action == "save_to_memory":
+            if not isinstance(params.get("key"), str) or not isinstance(params.get("value"), str):
+                raise ValueError("save_to_memory requires params.key and params.value (strings)")
+        if self.action in {"finish"} and not isinstance(params.get("summary"), str):
+            raise ValueError("finish requires params.summary (string)")
+        if self.action in {"fail", "give_up"} and not isinstance(params.get("reason"), str):
+            raise ValueError(f"{self.action} requires params.reason (string)")
+        return self

@@ -52,4 +52,4 @@ async def test_postmortem(monkeypatch, temp_db):
 
         await pm.run_postmortem(db=db, state=state, emit=lambda e: None)
         report = await queries.get_postmortem(db, session_id)
-        assert report["run_analysis"] == "ok"
+        assert "Analysis:\nok" in report["run_analysis"]

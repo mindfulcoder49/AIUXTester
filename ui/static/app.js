@@ -33,7 +33,7 @@ function filterConfigForTier(config, tier) {
   return out;
 }
 
-const { createApp, reactive, computed, onMounted, ref } = Vue;
+const { createApp, reactive, computed, onMounted, onBeforeUnmount, ref } = Vue;
 const { createRouter, createWebHashHistory } = VueRouter;
 
 const store = reactive({
@@ -406,6 +406,7 @@ const SessionDetail = {
     const postmortem = ref(null);
     const logs = ref([]);
     let eventSource = null;
+    let refreshTimer = null;
 
     const loadSession = async (id) => {
       const data = await apiRequest(`/sessions/${id}`);
@@ -493,6 +494,17 @@ const SessionDetail = {
       };
     };
 
+    const startRefresh = (id) => {
+      if (refreshTimer) clearInterval(refreshTimer);
+      refreshTimer = setInterval(async () => {
+        if (!session.value) return;
+        if (["completed", "failed", "stopped", "loop_detected"].includes(session.value.status)) return;
+        try {
+          await loadSession(id);
+        } catch (_) {}
+      }, 3000);
+    };
+
     const stop = async () => {
       await apiRequest(`/sessions/${session.value.id}/stop`, { method: "POST" });
     };
@@ -503,6 +515,12 @@ const SessionDetail = {
       const id = router.currentRoute.value.params.id;
       await loadSession(id);
       connectStream(id);
+      startRefresh(id);
+    });
+
+    onBeforeUnmount(() => {
+      if (eventSource) eventSource.close();
+      if (refreshTimer) clearInterval(refreshTimer);
     });
 
     return { session, steps, postmortem, logs, stop, back, formatPostmortemValue };

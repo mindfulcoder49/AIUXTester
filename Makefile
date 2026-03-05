@@ -5,7 +5,7 @@ PIP := $(VENV)/bin/pip
 PYTEST := $(VENV)/bin/pytest
 UVICORN := $(VENV)/bin/uvicorn
 
-.PHONY: setup setup-python setup-node run test test-backend test-ui e2e
+.PHONY: setup setup-python setup-node run run-worker docker-up docker-down docker-logs test test-backend test-ui e2e
 
 setup: setup-python setup-node
 
@@ -19,6 +19,18 @@ setup-node:
 
 run:
 	@source $(VENV)/bin/activate && uvicorn main:app --reload
+
+run-worker:
+	@source $(VENV)/bin/activate && python worker_main.py
+
+docker-up:
+	@docker compose up --build
+
+docker-down:
+	@docker compose down -v
+
+docker-logs:
+	@docker compose logs -f web worker mariadb redis
 
 test: test-backend test-ui
 

@@ -8,7 +8,7 @@ import pytest
 import httpx
 
 import config
-from database.db import init_db
+from database.db import init_db, get_db
 from database import queries
 from auth.security import hash_password
 from ui.app import app, SESSION_STREAMS, SESSION_TASKS
@@ -24,6 +24,8 @@ def reset_env(monkeypatch):
 async def temp_db(monkeypatch):
     with tempfile.TemporaryDirectory() as tmp:
         db_path = Path(tmp) / "test.db"
+        monkeypatch.setattr(config, "DB_BACKEND", "sqlite")
+        monkeypatch.setattr(config, "DATABASE_URL", "")
         monkeypatch.setattr(config, "DATABASE_PATH", str(db_path))
         await init_db()
         yield db_path
@@ -49,15 +51,16 @@ async def user_token(client):
 @pytest.fixture
 async def admin_token(temp_db, client):
     async def make_admin():
-        import aiosqlite
-        async with aiosqlite.connect(config.DATABASE_PATH) as db:
-            db.row_factory = aiosqlite.Row
+        async for db in get_db():
             user_id = str(uuid.uuid4())
-            await db.execute(
-                "INSERT INTO users (id, email, password_hash, role, tier, created_at, updated_at) VALUES (?, ?, ?, 'admin', 'pro', ?, ?)",
-                (user_id, "admin@example.com", hash_password("password"), queries.now_iso(), queries.now_iso()),
+            await queries.create_user(
+                db,
+                user_id=user_id,
+                email="admin@example.com",
+                password_hash=hash_password("password"),
+                role="admin",
+                tier="pro",
             )
-            await db.commit()
             return user_id
 
     user_id = await make_admin()

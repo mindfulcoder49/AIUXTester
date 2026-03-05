@@ -15,9 +15,9 @@ class FakeLLM:
         self.calls += 1
         if self.calls == 1:
             return schema.model_validate({
-                "action": "click",
-                "params": {"x": 10, "y": 10},
-                "reasoning": "click",
+                "action": "execute_js",
+                "params": {"script": "return 'ok';"},
+                "reasoning": "run js",
             })
         return schema.model_validate({
             "action": "finish",
@@ -53,9 +53,6 @@ class FakeBrowserManager:
     async def screenshot(self):
         return b"png"
 
-    async def screenshot_with_markers(self, markers):
-        return b"png"
-
     async def get_html(self):
         return "<html></html>"
 
@@ -71,14 +68,10 @@ async def test_run_graph(monkeypatch, temp_db):
     async def ok_action(*args, **kwargs):
         return True, None
 
-    monkeypatch.setattr(test_graph.browser_actions, "click", ok_action)
     monkeypatch.setattr(test_graph.browser_actions, "navigate", ok_action)
-    monkeypatch.setattr(test_graph.browser_actions, "scroll_down", ok_action)
-    monkeypatch.setattr(test_graph.browser_actions, "scroll_up", ok_action)
-    monkeypatch.setattr(test_graph.browser_actions, "swipe_left", ok_action)
-    monkeypatch.setattr(test_graph.browser_actions, "swipe_right", ok_action)
-    monkeypatch.setattr(test_graph.browser_actions, "click_and_drag", ok_action)
-    monkeypatch.setattr(test_graph.browser_actions, "type_text", ok_action)
+    async def ok_js(*args, **kwargs):
+        return True, None, "ok"
+    monkeypatch.setattr(test_graph.browser_actions, "execute_javascript", ok_js)
 
     async with aiosqlite.connect(config.DATABASE_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -110,14 +103,10 @@ async def test_run_graph_give_up(monkeypatch, temp_db):
     async def ok_action(*args, **kwargs):
         return True, None
 
-    monkeypatch.setattr(test_graph.browser_actions, "click", ok_action)
     monkeypatch.setattr(test_graph.browser_actions, "navigate", ok_action)
-    monkeypatch.setattr(test_graph.browser_actions, "scroll_down", ok_action)
-    monkeypatch.setattr(test_graph.browser_actions, "scroll_up", ok_action)
-    monkeypatch.setattr(test_graph.browser_actions, "swipe_left", ok_action)
-    monkeypatch.setattr(test_graph.browser_actions, "swipe_right", ok_action)
-    monkeypatch.setattr(test_graph.browser_actions, "click_and_drag", ok_action)
-    monkeypatch.setattr(test_graph.browser_actions, "type_text", ok_action)
+    async def ok_js(*args, **kwargs):
+        return True, None, "ok"
+    monkeypatch.setattr(test_graph.browser_actions, "execute_javascript", ok_js)
 
     async with aiosqlite.connect(config.DATABASE_PATH) as db:
         db.row_factory = aiosqlite.Row

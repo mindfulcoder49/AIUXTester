@@ -38,6 +38,8 @@ async def e2e_client(e2e_enabled, monkeypatch):
         import config
 
         db_path = Path(tmp) / "e2e.db"
+        monkeypatch.setattr(config, "DB_BACKEND", "sqlite")
+        monkeypatch.setattr(config, "DATABASE_URL", "")
         monkeypatch.setattr(config, "DATABASE_PATH", str(db_path))
 
         from ui.app import app

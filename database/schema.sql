@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS actions (
     action_params TEXT,
     intent        TEXT,
     reasoning     TEXT,
+    action_result TEXT,
     screenshot_id INTEGER REFERENCES screenshots(id),
     success       INTEGER NOT NULL DEFAULT 1,
     error_message TEXT,

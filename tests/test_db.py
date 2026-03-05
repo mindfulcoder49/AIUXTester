@@ -57,6 +57,7 @@ async def test_db_crud(temp_db):
             action_params={"x": 1, "y": 2},
             intent="Open details panel",
             reasoning="test",
+            action_result='{"ok":true}',
             screenshot_id=screenshot_id,
             success=True,
             error_message=None,
@@ -64,6 +65,7 @@ async def test_db_crud(temp_db):
         actions = await queries.list_actions(db, session_id)
         assert len(actions) == 1
         assert actions[0]["intent"] == "Open details panel"
+        assert actions[0]["action_result"] == '{"ok":true}'
 
         await queries.upsert_memory(db, session_id=session_id, key="k", value="v")
         await queries.upsert_memory(db, session_id=session_id, key="k", value="v2")

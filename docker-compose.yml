@@ -1,0 +1,62 @@
+services:
+  mariadb:
+    image: mariadb:11.4
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    environment:
+      - MARIADB_ROOT_PASSWORD=rootpass
+      - MARIADB_DATABASE=aiuxtester
+      - MARIADB_USER=aiuxtester
+      - MARIADB_PASSWORD=aiuxtester
+    ports:
+      - "3306:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mariadb-admin", "ping", "-h", "localhost", "-u", "root", "-prootpass"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  web:
+    build: .
+    command: bash -lc "uvicorn main:app --host 0.0.0.0 --port 8080"
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - DB_BACKEND=mariadb
+      - DATABASE_URL=mysql://aiuxtester:aiuxtester@mariadb:3306/aiuxtester
+      - QUEUE_MODE=redis
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: .
+    command: bash -lc "python worker_main.py"
+    environment:
+      - DB_BACKEND=mariadb
+      - DATABASE_URL=mysql://aiuxtester:aiuxtester@mariadb:3306/aiuxtester
+      - QUEUE_MODE=redis
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  mariadb_data:

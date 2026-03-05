@@ -14,13 +14,15 @@ from pathlib import Path
 from auth.models import RegisterRequest, LoginRequest, RefreshRequest, TokenResponse, UserResponse, UpdateTierRequest
 from auth.security import hash_password, verify_password, create_access_token, create_refresh_token, decode_token
 from auth.dependencies import get_current_user, require_admin
-from database.db import init_db, get_db
+from database.db import init_db, get_db, open_db, close_db
 from database import queries
 from llm.registry import validate_provider_model, validate_config_for_tier, ConfigError
 from config import MODEL_REGISTRY
 from agent.test_graph import run_test_session
 from agent.postmortem_graph import run_postmortem
-from config import REFRESH_TOKEN_EXPIRE_DAYS
+from config import REFRESH_TOKEN_EXPIRE_DAYS, QUEUE_MODE
+from jobs import run_session_job
+from queueing import get_async_redis, get_queue, redis_available, session_channel
 
 app = FastAPI()
 logger = logging.getLogger("aiuxtester")
@@ -67,16 +69,22 @@ async def startup():
     admin_email = os.getenv("ADMIN_EMAIL")
     admin_password = os.getenv("ADMIN_PASSWORD")
     if admin_email and admin_password:
-        async for db in get_db():
+        async with open_db() as db:
             user = await queries.get_user_by_email(db, admin_email)
             if not user:
-                user_id = str(uuid.uuid4())
-                await db.execute(
-                    "INSERT INTO users (id, email, password_hash, role, tier, created_at, updated_at) VALUES (?, ?, ?, 'admin', 'pro', ?, ?)",
-                    (user_id, admin_email, hash_password(admin_password), queries.now_iso(), queries.now_iso()),
+                await queries.create_user(
+                    db,
+                    user_id=str(uuid.uuid4()),
+                    email=admin_email,
+                    password_hash=hash_password(admin_password),
+                    role="admin",
+                    tier="pro",
                 )
-                await db.commit()
-            break
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    await close_db()
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -200,71 +208,79 @@ async def create_session(payload: dict, user=Depends(get_current_user), db=Depen
         config=config,
     )
 
-    queue = asyncio.Queue()
-    SESSION_STREAMS[session_id] = queue
+    if QUEUE_MODE == "redis" and redis_available():
+        get_queue("sessions").enqueue(run_session_job, session_id, job_id=session_id)
+    else:
+        queue = asyncio.Queue()
+        SESSION_STREAMS[session_id] = queue
 
-    async def emit(event: dict):
-        await queue.put(event)
+        async def emit(event: dict):
+            await queue.put(event)
 
-    async def worker():
-        import aiosqlite
-        from config import DATABASE_PATH
-        async with aiosqlite.connect(DATABASE_PATH) as conn:
-            conn.row_factory = aiosqlite.Row
-            final_state = None
-            try:
-                logger.info("Session %s worker started", session_id)
-                session_row = await queries.get_session(conn, session_id)
-                final_state = await run_test_session(
-                    db=conn,
-                    session_row=session_row,
-                    user_tier=user["tier"],
-                    emit=lambda e: asyncio.create_task(emit(e)),
-                )
-            except Exception as exc:
-                message = str(exc)
-                logger.exception("Session %s worker failed: %s", session_id, message)
-                await queries.update_session_status(conn, session_id, "failed", message)
-                await queries.insert_run_log(
-                    conn,
-                    session_id=session_id,
-                    step_number=None,
-                    level="error",
-                    message="Session worker crashed",
-                    details=message,
-                )
-                await emit({"type": "error", "data": {"message": message}})
-                return
+        async def worker():
+            async with open_db() as conn:
+                final_state = None
+                try:
+                    logger.info("Session %s worker started", session_id)
+                    session_row = await queries.get_session(conn, session_id)
+                    final_state = await run_test_session(
+                        db=conn,
+                        session_row=session_row,
+                        user_tier=user["tier"],
+                        emit=lambda e: asyncio.create_task(emit(e)),
+                    )
+                except Exception as exc:
+                    message = str(exc)
+                    logger.exception("Session %s worker failed: %s", session_id, message)
+                    await queries.update_session_status(conn, session_id, "failed", message)
+                    await queries.insert_run_log(
+                        conn,
+                        session_id=session_id,
+                        step_number=None,
+                        level="error",
+                        message="Session worker crashed",
+                        details=message,
+                    )
+                    await emit({"type": "error", "data": {"message": message}})
+                    return
 
-            try:
-                await run_postmortem(db=conn, state=final_state, emit=lambda e: asyncio.create_task(emit(e)))
-            except Exception as exc:
-                logger.warning("Session %s postmortem failed: %s", session_id, str(exc))
-                fallback = {
-                    "run_analysis": "Postmortem unavailable due to temporary model/API limits.",
-                    "html_analysis": "",
-                    "recommendations": json.dumps(
-                        {"note": "Try rerunning postmortem later.", "error": str(exc)}
-                    ),
-                }
-                await queries.save_postmortem(
-                    conn,
-                    session_id=session_id,
-                    run_analysis=fallback["run_analysis"],
-                    html_analysis=fallback["html_analysis"],
-                    recommendations=fallback["recommendations"],
-                )
-                await queries.insert_run_log(
-                    conn,
-                    session_id=session_id,
-                    step_number=None,
-                    level="warning",
-                    message="Postmortem unavailable",
-                    details=str(exc),
-                )
-                await emit({"type": "postmortem", "data": fallback})
+                if final_state and final_state.get("status") == "stopped":
+                    await emit({"type": "postmortem", "data": {
+                        "run_analysis": "Session stopped by user before completion.",
+                        "html_analysis": "",
+                        "recommendations": "",
+                    }})
+                    return
 
-    SESSION_TASKS[session_id] = asyncio.create_task(worker())
+                try:
+                    await run_postmortem(db=conn, state=final_state, emit=lambda e: asyncio.create_task(emit(e)))
+                except Exception as exc:
+                    logger.warning("Session %s postmortem failed: %s", session_id, str(exc))
+                    fallback = {
+                        "run_analysis": "Postmortem unavailable due to temporary model/API limits.",
+                        "html_analysis": "",
+                        "recommendations": json.dumps(
+                            {"note": "Try rerunning postmortem later.", "error": str(exc)}
+                        ),
+                    }
+                    await queries.save_postmortem(
+                        conn,
+                        session_id=session_id,
+                        run_analysis=fallback["run_analysis"],
+                        html_analysis=fallback["html_analysis"],
+                        recommendations=fallback["recommendations"],
+                    )
+                    await queries.insert_run_log(
+                        conn,
+                        session_id=session_id,
+                        step_number=None,
+                        level="warning",
+                        message="Postmortem unavailable",
+                        details=str(exc),
+                    )
+                    await emit({"type": "postmortem", "data": fallback})
+
+        SESSION_TASKS[session_id] = asyncio.create_task(worker())
 
     return {"session_id": session_id}
 
@@ -346,7 +362,12 @@ async def get_screenshot(request: Request, screenshot_id: int, token: Optional[s
     session = await queries.get_session(db, row["session_id"])
     if user["role"] != "admin" and session["user_id"] != user["id"]:
         raise HTTPException(status_code=403, detail="Forbidden")
-    return Response(content=row["image_data"], media_type="image/png")
+    image_data = row["image_data"]
+    if isinstance(image_data, memoryview):
+        image_data = image_data.tobytes()
+    elif isinstance(image_data, bytearray):
+        image_data = bytes(image_data)
+    return Response(content=image_data, media_type="image/png")
 
 
 @app.get("/sessions/{session_id}/stream")
@@ -354,18 +375,41 @@ async def stream(request: Request, session_id: str, token: Optional[str] = None,
     user = await _resolve_user(request, token, db)
     if not user:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    queue = SESSION_STREAMS.get(session_id)
-    if not queue:
-        raise HTTPException(status_code=404, detail="Stream not found")
     session = await queries.get_session(db, session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     if user["role"] != "admin" and session["user_id"] != user["id"]:
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    async def event_generator():
-        while True:
-            event = await queue.get()
-            yield f"data: {json.dumps(event)}\n\n"
+    if QUEUE_MODE == "redis" and redis_available():
+        async def event_generator():
+            redis_conn = get_async_redis()
+            pubsub = redis_conn.pubsub()
+            channel = session_channel(session_id)
+            await pubsub.subscribe(channel)
+            try:
+                while True:
+                    message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=5.0)
+                    if message and message.get("data"):
+                        payload = message["data"]
+                        if isinstance(payload, bytes):
+                            payload = payload.decode("utf-8")
+                        yield f"data: {payload}\n\n"
+                    else:
+                        yield ": ping\n\n"
+                        await asyncio.sleep(1)
+            finally:
+                await pubsub.unsubscribe(channel)
+                await pubsub.close()
+                await redis_conn.close()
+    else:
+        queue = SESSION_STREAMS.get(session_id)
+        if not queue:
+            raise HTTPException(status_code=404, detail="Stream not found")
+
+        async def event_generator():
+            while True:
+                event = await queue.get()
+                yield f"data: {json.dumps(event)}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

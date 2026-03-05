@@ -24,6 +24,7 @@ from llm.gemini_client import GeminiClient
 from llm.claude_client import ClaudeClient
 from utils.image import to_base64_png
 from utils.loop_detector import fingerprint
+from utils.html_cleaner import sanitize_html
 
 
 def get_llm_client(provider: str):
@@ -66,7 +67,9 @@ def build_graph(db, emit: Callable[[dict], None]):
         await browser.launch(state["mode"])
         await browser_actions.navigate(require_page(), state["start_url"])
         png = await browser.screenshot()
-        html = await browser.get_html()
+        html_raw = await browser.get_html()
+        html = sanitize_html(html_raw, mode="agent")
+        html_postmortem = sanitize_html(html_raw, mode="postmortem")
         url = await browser.get_url()
         screenshot_id = await insert_screenshot(
             db,
@@ -80,10 +83,11 @@ def build_graph(db, emit: Callable[[dict], None]):
             db,
             session_id=state["session_id"],
             url=url,
-            html=html,
+            html=html_postmortem,
             step_number=0,
         )
         state["current_url"] = url
+        state["current_html"] = html
         state["current_screenshot"] = to_base64_png(png)
         state["current_screenshot_id"] = screenshot_id
         state["current_step"] = 0
@@ -94,6 +98,13 @@ def build_graph(db, emit: Callable[[dict], None]):
 
     async def think(state: AgentState):
         if state["status"] != "running":
+            return state
+        # Respect user stop requests before invoking the LLM.
+        session = await get_session(db, state["session_id"])
+        if session and session["status"] == "stopped":
+            state["status"] = "stopped"
+            state["end_reason"] = "Stopped by user"
+            await log_event(state, "warning", "Stop requested by user")
             return state
         # Hard fail-safe in case control flow reaches think beyond configured bounds.
         if state["current_step"] >= state["run_config"].get("max_steps", 50):
@@ -110,7 +121,7 @@ def build_graph(db, emit: Callable[[dict], None]):
         preamble = run_config.get("custom_system_prompt_preamble", "")
 
         prompt = system_prompt(state["goal"], state["mode"], memory, state["action_history"], max_history, preamble)
-        user = user_prompt(state["current_url"], state["current_step"])
+        user = user_prompt(state["current_url"], state["current_step"], state["current_html"])
 
         validate_provider_model(state["provider"], state["model"], state["tier"])
         llm = get_llm_client(state["provider"])
@@ -120,7 +131,7 @@ def build_graph(db, emit: Callable[[dict], None]):
             action = llm.generate_action(
                 system_prompt=prompt,
                 user_prompt=user,
-                images=[base64_to_bytes(state["current_screenshot"])],
+                images=[],
                 schema=AgentAction,
                 temperature=0.2,
                 model=state["model"],
@@ -160,67 +171,14 @@ def build_graph(db, emit: Callable[[dict], None]):
         intent = action.get("intent")
         reasoning = action.get("reasoning", "")
         memory_update = action.get("memory_update")
+        execution_result = None
         success, error = True, None
-        next_step = state["current_step"] + 1
 
-        async def emit_coordinate_preview(markers: list[dict], label: str):
-            png_preview = await browser.screenshot_with_markers(markers)
-            preview_url = await browser.get_url()
-            preview_id = await insert_screenshot(
-                db,
-                session_id=state["session_id"],
-                url=preview_url,
-                image_data=png_preview,
-                action_taken=f"{action_type}_preview",
-                step_number=next_step,
-            )
-            emit(
-                {
-                    "type": "step",
-                    "data": {
-                        "step": next_step,
-                        "action": f"{label} (preview)",
-                        "intent": intent,
-                        "reasoning": reasoning,
-                        "screenshot_id": preview_id,
-                        "url": preview_url,
-                    },
-                }
-            )
-
-        if action_type == "scroll_down":
-            success, error = await browser_actions.scroll_down(require_page(), params.get("pixels", 300))
-        elif action_type == "scroll_up":
-            success, error = await browser_actions.scroll_up(require_page(), params.get("pixels", 300))
-        elif action_type == "swipe_left":
-            await emit_coordinate_preview(
-                [{"x": params.get("x"), "y": params.get("y"), "label": "swipe start"}],
-                f"swipe_left @ ({params.get('x')}, {params.get('y')})",
-            )
-            success, error = await browser_actions.swipe_left(require_page(), params.get("x"), params.get("y"), params.get("distance", 100))
-        elif action_type == "swipe_right":
-            await emit_coordinate_preview(
-                [{"x": params.get("x"), "y": params.get("y"), "label": "swipe start"}],
-                f"swipe_right @ ({params.get('x')}, {params.get('y')})",
-            )
-            success, error = await browser_actions.swipe_right(require_page(), params.get("x"), params.get("y"), params.get("distance", 100))
-        elif action_type == "click":
-            await emit_coordinate_preview(
-                [{"x": params.get("x"), "y": params.get("y"), "label": "click target"}],
-                f"click @ ({params.get('x')}, {params.get('y')})",
-            )
-            success, error = await browser_actions.click(require_page(), params.get("x"), params.get("y"))
-        elif action_type == "click_and_drag":
-            await emit_coordinate_preview(
-                [
-                    {"x": params.get("x1"), "y": params.get("y1"), "label": "drag start", "color": "#d14343"},
-                    {"x": params.get("x2"), "y": params.get("y2"), "label": "drag end", "color": "#0f766e"},
-                ],
-                f"drag ({params.get('x1')}, {params.get('y1')}) -> ({params.get('x2')}, {params.get('y2')})",
-            )
-            success, error = await browser_actions.click_and_drag(require_page(), params.get("x1"), params.get("y1"), params.get("x2"), params.get("y2"))
-        elif action_type == "type":
-            success, error = await browser_actions.type_text(require_page(), params.get("text", ""))
+        if action_type == "execute_js":
+            success, error, result = await browser_actions.execute_javascript(require_page(), params.get("script", ""))
+            execution_result = result
+            if result:
+                await log_event(state, "debug", "JS execution result", str(result)[:500])
         elif action_type == "navigate":
             success, error = await browser_actions.navigate(require_page(), params.get("url"))
         elif action_type == "save_to_memory":
@@ -245,6 +203,7 @@ def build_graph(db, emit: Callable[[dict], None]):
             "action_params": params,
             "intent": intent,
             "reasoning": reasoning,
+            "execution_result": execution_result,
             "success": success,
             "error": error,
             "memory_update": memory_update,
@@ -258,10 +217,14 @@ def build_graph(db, emit: Callable[[dict], None]):
         return state
 
     async def capture(state: AgentState):
+        if state["status"] != "running":
+            return state
         last_action = state.get("_last_action", {})
         step = state["current_step"] + 1
         png = await browser.screenshot()
-        html = await browser.get_html()
+        html_raw = await browser.get_html()
+        html = sanitize_html(html_raw, mode="agent")
+        html_postmortem = sanitize_html(html_raw, mode="postmortem")
         url = await browser.get_url()
         screenshot_id = await insert_screenshot(
             db,
@@ -275,7 +238,7 @@ def build_graph(db, emit: Callable[[dict], None]):
             db,
             session_id=state["session_id"],
             url=url,
-            html=html,
+            html=html_postmortem,
             step_number=step,
         )
 
@@ -287,6 +250,7 @@ def build_graph(db, emit: Callable[[dict], None]):
             action_params=last_action.get("action_params", {}),
             intent=last_action.get("intent"),
             reasoning=last_action.get("reasoning", ""),
+            action_result=last_action.get("execution_result"),
             screenshot_id=screenshot_id,
             success=bool(last_action.get("success", False)),
             error_message=last_action.get("error"),
@@ -302,6 +266,7 @@ def build_graph(db, emit: Callable[[dict], None]):
         # update state
         state["current_step"] = step
         state["current_url"] = url
+        state["current_html"] = html
         state["current_screenshot"] = to_base64_png(png)
         state["current_screenshot_id"] = screenshot_id
 
@@ -311,6 +276,7 @@ def build_graph(db, emit: Callable[[dict], None]):
             "action_params": last_action.get("action_params"),
             "intent": last_action.get("intent"),
             "reasoning": last_action.get("reasoning"),
+            "execution_result": last_action.get("execution_result"),
             "url": url,
             "success": bool(last_action.get("success", False)),
             "error": last_action.get("error"),
@@ -342,7 +308,7 @@ def build_graph(db, emit: Callable[[dict], None]):
     async def check_status(state: AgentState):
         # stop requested?
         session = await get_session(db, state["session_id"])
-        if session and session["status"] == "stopped":
+        if state["status"] == "running" and session and session["status"] == "stopped":
             state["status"] = "stopped"
             state["end_reason"] = "Stopped by user"
             await log_event(state, "warning", "Stop requested by user")
@@ -353,7 +319,7 @@ def build_graph(db, emit: Callable[[dict], None]):
                 state["end_reason"] = "Stopped on first error"
 
         # max steps
-        if state["current_step"] >= state["run_config"].get("max_steps", 50):
+        if state["status"] == "running" and state["current_step"] >= state["run_config"].get("max_steps", 50):
             state["status"] = "failed"
             state["end_reason"] = "Max steps reached"
             await log_event(state, "warning", "Max steps reached")
@@ -390,12 +356,6 @@ def build_graph(db, emit: Callable[[dict], None]):
 
     return graph.compile()
 
-
-def base64_to_bytes(b64: str) -> bytes:
-    import base64
-    return base64.b64decode(b64.encode("utf-8"))
-
-
 async def run_test_session(*, db, session_row, user_tier: str, emit: Callable[[dict], None]):
     state: AgentState = {
         "session_id": session_row["id"],
@@ -408,6 +368,7 @@ async def run_test_session(*, db, session_row, user_tier: str, emit: Callable[[d
         "tier": user_tier,
         "run_config": json.loads(session_row["config_json"]),
         "current_url": session_row["start_url"],
+        "current_html": "",
         "current_screenshot": "",
         "current_screenshot_id": 0,
         "current_step": 0,

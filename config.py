@@ -11,6 +11,10 @@ load_dotenv(ROOT_DIR / ".env")
 APP_NAME = "AIUXTester"
 
 DATABASE_PATH = os.getenv("DATABASE_PATH", "./aiuxtester.db")
+DB_BACKEND = os.getenv("DB_BACKEND", "sqlite").lower()  # sqlite | mariadb
+DATABASE_URL = os.getenv("DATABASE_URL", "")
+QUEUE_MODE = os.getenv("QUEUE_MODE", "inline")  # inline | redis
+REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
 
 JWT_SECRET = os.getenv("JWT_SECRET", "change-me")
 JWT_ALGORITHM = "HS256"

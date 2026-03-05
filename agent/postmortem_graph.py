@@ -8,7 +8,7 @@ from agent.state import AgentState
 from llm.openai_client import OpenAIClient
 from llm.gemini_client import GeminiClient
 from llm.claude_client import ClaudeClient
-from database.queries import list_html_captures, save_postmortem, insert_run_log
+from database.queries import list_html_captures, save_postmortem, insert_run_log, list_run_logs
 
 
 class PostmortemRunOutput(BaseModel):
@@ -32,6 +32,51 @@ def get_llm_client(provider: str):
 
 
 def build_postmortem_graph(db, emit: Callable[[dict], None]):
+    def format_run_facts(run_facts: dict) -> str:
+        lines = [
+            f"Goal: {run_facts.get('goal')}",
+            f"Final Status: {run_facts.get('final_status')}",
+            f"End Reason: {run_facts.get('end_reason')}",
+            f"Total Actions: {run_facts.get('total_actions')}",
+            f"Action Counts: {run_facts.get('action_counts')}",
+            f"Status Counts: {run_facts.get('status_counts')}",
+            f"Unique URLs Visited: {', '.join(run_facts.get('unique_urls_visited', [])) or 'none'}",
+            f"Error Count: {run_facts.get('error_count')}",
+        ]
+        return "Run Facts:\n" + "\n".join(lines)
+
+    def build_run_facts(state: AgentState, logs: list[dict]) -> dict:
+        actions = state.get("action_history", [])
+        status_counts: dict[str, int] = {}
+        action_counts: dict[str, int] = {}
+        errors = []
+        for a in actions:
+            action_type = a.get("action_type", "unknown")
+            action_counts[action_type] = action_counts.get(action_type, 0) + 1
+            key = "success" if a.get("success") else "failed"
+            status_counts[key] = status_counts.get(key, 0) + 1
+            if a.get("error"):
+                errors.append({"step": a.get("step"), "error": a.get("error")})
+
+        unique_urls = []
+        for a in actions:
+            u = a.get("url")
+            if u and u not in unique_urls:
+                unique_urls.append(u)
+
+        return {
+            "goal": state.get("goal"),
+            "final_status": state.get("status"),
+            "end_reason": state.get("end_reason"),
+            "total_actions": len(actions),
+            "action_counts": action_counts,
+            "status_counts": status_counts,
+            "unique_urls_visited": unique_urls,
+            "error_count": len(errors),
+            "recent_errors": errors[-5:],
+            "log_tail": logs[-20:],
+        }
+
     def heuristic_run_analysis(state: AgentState) -> tuple[str, str]:
         actions = state.get("action_history", [])
         total = len(actions)
@@ -105,20 +150,22 @@ def build_postmortem_graph(db, emit: Callable[[dict], None]):
 
     async def pm_analyze_run(state: AgentState):
         await log_event(state, "info", "Postmortem run analysis started")
+        log_rows = await list_run_logs(db, state["session_id"])
+        logs = [dict(r) for r in log_rows]
+        run_facts = build_run_facts(state, logs)
         try:
             llm = get_llm_client(state["provider"])
             prompt = (
                 "You are a post-mortem analyst for a web testing agent. "
                 "Analyze the run outcome, highlight success/failure points, and produce actionable recommendations. "
+                "You MUST ground analysis in the provided RUN_FACTS and should not contradict them. "
                 "Return JSON: {run_analysis: string, recommendations: string}."
             )
             user = json.dumps(
                 {
-                    "goal": state["goal"],
-                    "status": state["status"],
-                    "end_reason": state["end_reason"],
-                    "memory": state["memory"],
-                    "actions": state["action_history"],
+                    "RUN_FACTS": run_facts,
+                    "memory": state.get("memory", {}),
+                    "actions": state.get("action_history", []),
                 }
             )
             result = llm.generate_action(
@@ -129,7 +176,11 @@ def build_postmortem_graph(db, emit: Callable[[dict], None]):
                 temperature=0.2,
                 model=state["model"],
             )
-            state["postmortem_run_analysis"] = result.run_analysis
+            state["postmortem_run_analysis"] = (
+                format_run_facts(run_facts)
+                + "\n\nAnalysis:\n"
+                + result.run_analysis
+            )
             state["postmortem_recommendations"] = result.recommendations
             await log_event(state, "info", "Postmortem run analysis complete")
         except Exception as exc:
@@ -144,7 +195,7 @@ def build_postmortem_graph(db, emit: Callable[[dict], None]):
         html_rows = await list_html_captures(db, state["session_id"])
         dedup_pages: dict[str, str] = {}
         for row in html_rows:
-            dedup_pages[row["url"]] = row["html"][:2000]
+            dedup_pages[row["url"]] = row["html"]
         pages = [{"url": u, "html": h} for u, h in dedup_pages.items()]
         try:
             llm = get_llm_client(state["provider"])
