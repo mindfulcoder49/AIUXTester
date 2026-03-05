@@ -67,6 +67,14 @@ async function loadUser() {
   }
 }
 
+function normalizeStartUrl(raw) {
+  const v = (raw || "").trim();
+  if (!v) return v;
+  if (/^https?:\/\//i.test(v)) return v;
+  if (v.startsWith("/")) return v;
+  return `https://${v}`;
+}
+
 const Home = {
   template: `
     <div class="home">
@@ -82,22 +90,142 @@ const Home = {
           <a href="#/docs">Documentation</a>
           <a href="#/costs">Cost Model</a>
         </div>
-        <button class="cta" @click="cta">{{ store.token ? "Open Dashboard" : "Get Started" }}</button>
+        <button class="cta" @click="goDashboard" v-if="store.token">Open Dashboard</button>
       </section>
 
       <section class="panel">
-        <h2>Quick Start</h2>
-        <ol class="flat-list ordered">
-          <li>Enter the website you want to explore.</li>
-          <li>{{ store.token ? "You are logged in. Continue to dashboard." : "Log in to run agent sessions." }}</li>
-          <li>Describe the task you want: <code>explore this website and try to accomplish it's primary use case</code>.</li>
-        </ol>
+        <h2>Start A Test Run</h2>
+        <form @submit.prevent="submitWizard">
+          <div v-if="step === 1">
+            <label>Enter your website to start testing!</label>
+            <input v-model.trim="startUrl" placeholder="https://example.com" required />
+          </div>
+
+          <div v-if="step === 2">
+            <label>Pick a goal for the agent</label>
+            <textarea
+              v-model.trim="goal"
+              rows="4"
+              required
+            ></textarea>
+          </div>
+
+          <div v-if="step === 3 && !store.token">
+            <label>Pick a username and password</label>
+            <input v-model.trim="username" placeholder="Username (email or handle)" required />
+            <input v-model="password" type="password" placeholder="Password" required />
+          </div>
+
+          <div class="row">
+            <button type="button" v-if="step > 1" @click="step--">Back</button>
+            <button type="submit" :disabled="loading">
+              {{ loading ? "Working..." : (step < maxStep ? "Continue" : "Start Test") }}
+            </button>
+          </div>
+        </form>
+        <p class="muted" v-if="error">{{ error }}</p>
       </section>
     </div>
   `,
   setup() {
-    const cta = () => router.push(store.token ? "/app" : "/login");
-    return { store, cta };
+    const step = ref(1);
+    const maxStep = computed(() => (store.token ? 2 : 3));
+    const startUrl = ref("");
+    const goal = ref("Explore the site and try to detect and accomplish it's primary use case");
+    const username = ref("");
+    const password = ref("");
+    const loading = ref(false);
+    const error = ref("");
+
+    const goDashboard = () => router.push("/app");
+
+    const normalizeEmail = (value) => {
+      const v = (value || "").trim();
+      if (!v) return "";
+      return v.includes("@") ? v : `${v}@aiuxtester.local`;
+    };
+
+    const ensureAuth = async () => {
+      if (store.token) {
+        if (!store.user) await loadUser();
+        return;
+      }
+      const email = normalizeEmail(username.value);
+      try {
+        const data = await apiRequest("/auth/register", {
+          method: "POST",
+          body: JSON.stringify({ email, password: password.value }),
+        });
+        store.token = data.access_token;
+        localStorage.setItem("access_token", store.token);
+      } catch (_) {
+        const data = await apiRequest("/auth/login", {
+          method: "POST",
+          body: JSON.stringify({ email, password: password.value }),
+        });
+        store.token = data.access_token;
+        localStorage.setItem("access_token", store.token);
+      }
+      await loadUser();
+    };
+
+    const startSession = async () => {
+      const openaiModels = store.models?.openai || [];
+      const model = openaiModels.includes("gpt-5-mini")
+        ? "gpt-5-mini"
+        : (openaiModels[0] || "gpt-5-mini");
+      const payload = {
+        goal: goal.value,
+        start_url: normalizeStartUrl(startUrl.value),
+        provider: "openai",
+        model,
+        config: {
+          mode: "desktop",
+          max_steps: 50,
+          stop_on_first_error: false,
+        },
+      };
+      const res = await apiRequest("/sessions", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      router.push(`/sessions/${res.session_id}`);
+    };
+
+    const submitWizard = async () => {
+      error.value = "";
+      if (step.value === 1) {
+        step.value = 2;
+        return;
+      }
+      if (step.value === 2 && !store.token) {
+        step.value = 3;
+        return;
+      }
+      loading.value = true;
+      try {
+        await ensureAuth();
+        await startSession();
+      } catch (e) {
+        error.value = (e && e.message) ? e.message : "Unable to start test";
+      } finally {
+        loading.value = false;
+      }
+    };
+
+    return {
+      store,
+      step,
+      maxStep,
+      startUrl,
+      goal,
+      username,
+      password,
+      loading,
+      error,
+      goDashboard,
+      submitWizard,
+    };
   },
 };
 
@@ -106,26 +234,153 @@ const Docs = {
     <div class="docs">
       <header>
         <button @click="back">Back</button>
-        <h2>Documentation</h2>
+        <h2>Documentation Center</h2>
       </header>
       <section class="panel">
-        <h3>What The App Does</h3>
-        <ul class="flat-list">
-          <li>Runs browser sessions with Playwright in desktop or mobile mode.</li>
-          <li>Uses LLM-selected actions and streams each step live.</li>
-          <li>Saves action history, screenshots, logs, memory, and sanitized HTML.</li>
-          <li>Generates postmortem analysis from run state and page HTML.</li>
-        </ul>
+        <h3>Platform Summary</h3>
+        <p>
+          AIUXTester is a full-loop AI web testing platform: one agent executes browser actions and a second agent
+          performs structured postmortem analysis. It is designed to surface UX and workflow feedback that product and
+          engineering teams often miss in deterministic test plans.
+        </p>
+        <div class="doc-grid">
+          <article class="doc-card">
+            <h4>Execution Agent</h4>
+            <p>Runs goal-driven navigation and JavaScript actions against real pages using Playwright.</p>
+          </article>
+          <article class="doc-card">
+            <h4>Streaming Trace</h4>
+            <p>Emits live steps, screenshots, intent, reasoning, and logs over SSE for transparent debugging.</p>
+          </article>
+          <article class="doc-card">
+            <h4>Postmortem Agent</h4>
+            <p>Generates state-level and HTML-level analysis with recommendations after each run.</p>
+          </article>
+          <article class="doc-card">
+            <h4>Persistent Evidence</h4>
+            <p>Stores sessions, screenshots, actions, HTML captures, logs, and memory in SQL storage.</p>
+          </article>
+        </div>
       </section>
+
       <section class="panel">
-        <h3>Quick Start Guide</h3>
+        <h3>Quick Start</h3>
         <ol class="flat-list ordered">
           <li>Enter the website you want to explore.</li>
-          <li>Log in.</li>
-          <li>In New Session, describe the task you want.</li>
-          <li>Suggested task: <code>explore this website and try to accomplish it's primary use case</code>.</li>
-          <li>Review stream, logs, and postmortem after completion.</li>
+          <li>Create an account or log in.</li>
+          <li>Set a goal (recommended: <code>explore this website and try to accomplish it's primary use case</code>).</li>
+          <li>Run the session and watch the live stream.</li>
+          <li>Review postmortem, logs, and step-by-step action evidence.</li>
         </ol>
+      </section>
+
+      <section class="panel">
+        <h3>Why This Finds Feedback Engineers Miss</h3>
+        <ul class="flat-list">
+          <li>It tests with open-ended goals instead of brittle scripted click paths.</li>
+          <li>It records intent and reasoning per action, revealing model assumptions and UX ambiguity.</li>
+          <li>It stores full evidence (HTML + screenshots + logs) so teams can reproduce and triage quickly.</li>
+          <li>It includes postmortem analysis that interprets both observed behavior and structural page factors.</li>
+        </ul>
+      </section>
+
+      <section class="panel">
+        <h3>Architecture Deep Dive</h3>
+        <p class="muted">Core runtime files:</p>
+        <ul class="flat-list">
+          <li><code>agent/test_graph.py</code>: initialize → think → execute → capture → check_status → teardown.</li>
+          <li><code>agent/postmortem_graph.py</code>: run facts analysis, HTML analysis, report save + emit.</li>
+          <li><code>browser/manager.py</code>: Playwright launch, viewports, stealth, screenshots, HTML capture.</li>
+          <li><code>browser/actions.py</code>: navigation and free-form JS execution primitives.</li>
+          <li><code>database/queries.py</code>: persistent run artifacts and session lifecycle writes.</li>
+          <li><code>queueing.py</code> + <code>jobs.py</code> + <code>worker_main.py</code>: Redis/RQ job execution.</li>
+          <li><code>ui/app.py</code>: API, auth, SSE streaming endpoints, and session orchestration.</li>
+        </ul>
+      </section>
+
+      <section class="panel">
+        <h3>Agent Loop Internals</h3>
+        <pre class="code-block">initialize
+  -> browser launch + first screenshot + first HTML capture
+think
+  -> LLM receives goal + run config + memory + action history + current HTML
+execute
+  -> action = navigate | execute_js | save_to_memory | finish | fail | give_up
+capture
+  -> save screenshot + save sanitized HTML + insert action record + update memory
+check_status
+  -> stop requested? max steps? terminal status?
+teardown
+  -> close browser
+</pre>
+        <p>
+          The action schema is strongly validated in <code>agent/state.py</code>, including required
+          <code>params.summary</code> for <code>finish</code>, and required script/url fields for executable actions.
+        </p>
+      </section>
+
+      <section class="panel">
+        <h3>Data Model & Evidence Trail</h3>
+        <ul class="flat-list">
+          <li><code>sessions</code>: goal, URL, mode, provider, model, config snapshot, status, end reason.</li>
+          <li><code>screenshots</code>: per-step PNG image + action label + URL.</li>
+          <li><code>html_captures</code>: per-step sanitized HTML for postmortem review.</li>
+          <li><code>actions</code>: action type/params, intent, reasoning, execution result, success/error.</li>
+          <li><code>agent_memory</code>: key-value memory updates used in later prompts.</li>
+          <li><code>run_logs</code>: structured debug/info/warn/error traces.</li>
+          <li><code>postmortem_reports</code>: final run analysis, html analysis, and recommendations.</li>
+        </ul>
+      </section>
+
+      <section class="panel">
+        <h3>HTML Sanitization Strategy</h3>
+        <p>
+          HTML is intentionally cleaned before prompt injection to reduce token waste and noise.
+          <code>utils/html_cleaner.py</code> performs mode-specific sanitization:
+        </p>
+        <ul class="flat-list">
+          <li>Agent mode: removes scripts/media/noisy tags and keeps actionable attributes.</li>
+          <li>Postmortem mode: retains more structural information while still removing executable noise.</li>
+          <li>Comments, declarations, and unsupported attributes are stripped consistently.</li>
+        </ul>
+      </section>
+
+      <section class="panel">
+        <h3>Model Providers & Tier Controls</h3>
+        <ul class="flat-list">
+          <li>Provider/model allowlist is enforced by tier in <code>llm/registry.py</code> + <code>config.py</code>.</li>
+          <li>Free tier runs constrained config keys and model set; Basic and Pro unlock deeper controls.</li>
+          <li>Route-level auth and role checks gate admin operations and user-owned session access.</li>
+        </ul>
+      </section>
+
+      <section class="panel">
+        <h3>Scalability Design</h3>
+        <ul class="flat-list">
+          <li>Web/API can scale independently from workers.</li>
+          <li>Redis queue decouples ingestion from execution and prevents API request blocking.</li>
+          <li>MariaDB stores durable run artifacts shared across machines.</li>
+          <li>SSE streams event updates while clients can always reconstruct full state from persisted rows.</li>
+        </ul>
+      </section>
+
+      <section class="panel">
+        <h3>Operational Guidance</h3>
+        <ul class="flat-list">
+          <li>If runs appear stuck, check run logs first, then worker logs, then provider rate limits.</li>
+          <li>If screenshots fail, verify Playwright launch flags and memory headroom.</li>
+          <li>If queue jobs stall, verify Redis connectivity and worker count.</li>
+          <li>For cost control, keep worker count low and use web autosleep with explicit warmup strategy.</li>
+        </ul>
+      </section>
+
+      <section class="panel">
+        <h3>What Makes This Approach Practical</h3>
+        <p>
+          The platform combines exploratory AI behavior with strict evidence capture. This balance is what makes outputs
+          credible for engineering teams: every claim in postmortem can be traced to action history, logs, URLs, and page artifacts.
+          That is the key difference between generic “AI feedback” and actionable test intelligence.
+        </p>
       </section>
     </div>
   `,
@@ -338,7 +593,7 @@ const Dashboard = {
       const filteredConfig = filterConfigForTier(config, tier.value);
       const payload = {
         goal: goal.value,
-        start_url: start_url.value,
+        start_url: normalizeStartUrl(start_url.value),
         provider: provider.value,
         model: model.value || (modelsForProvider.value[0] || ""),
         config: filteredConfig,

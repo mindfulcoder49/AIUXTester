@@ -15,6 +15,9 @@ DB_BACKEND = os.getenv("DB_BACKEND", "sqlite").lower()  # sqlite | mariadb
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 QUEUE_MODE = os.getenv("QUEUE_MODE", "inline")  # inline | redis
 REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
+SESSION_WATCHDOG_INTERVAL_SECONDS = int(os.getenv("SESSION_WATCHDOG_INTERVAL_SECONDS", "30"))
+SESSION_WATCHDOG_STALE_SECONDS = int(os.getenv("SESSION_WATCHDOG_STALE_SECONDS", "300"))
+BROWSER_LAUNCH_TIMEOUT_MS = int(os.getenv("BROWSER_LAUNCH_TIMEOUT_MS", "45000"))
 
 JWT_SECRET = os.getenv("JWT_SECRET", "change-me")
 JWT_ALGORITHM = "HS256"

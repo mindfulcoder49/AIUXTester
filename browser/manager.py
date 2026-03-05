@@ -4,7 +4,13 @@ import os
 from playwright.async_api import async_playwright, Browser, Page
 from playwright_stealth import stealth_async
 
-from config import VIEWPORT_DESKTOP, VIEWPORT_MOBILE, USERAGENT_DESKTOP, USERAGENT_MOBILE
+from config import (
+    VIEWPORT_DESKTOP,
+    VIEWPORT_MOBILE,
+    USERAGENT_DESKTOP,
+    USERAGENT_MOBILE,
+    BROWSER_LAUNCH_TIMEOUT_MS,
+)
 
 
 class BrowserManager:
@@ -17,12 +23,15 @@ class BrowserManager:
         self._pw = await async_playwright().start()
         launch_kwargs = {
             "headless": True,
+            "timeout": BROWSER_LAUNCH_TIMEOUT_MS,
             # Required on some constrained/containerized hosts (including Fly microVMs).
             "args": [
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
                 "--disable-dev-shm-usage",
                 "--disable-gpu",
+                "--no-zygote",
+                "--single-process",
             ],
         }
         executable = self._find_chromium_executable()

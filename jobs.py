@@ -51,6 +51,7 @@ async def _run_session_job(session_id: str) -> None:
                     message="Session worker crashed",
                     details=message,
                 )
+                await emit({"type": "status", "data": {"status": "failed", "end_reason": message}})
                 await emit({"type": "error", "data": {"message": message}})
                 return
 

@@ -149,6 +149,14 @@ async def get_session(db, session_id: str):
     return await _run(db, "SELECT * FROM sessions WHERE id = ?", (session_id,), fetch="one")
 
 
+async def list_running_sessions(db):
+    return await _run(
+        db,
+        "SELECT * FROM sessions WHERE status = 'running' ORDER BY created_at ASC",
+        fetch="all",
+    )
+
+
 # Screenshots
 async def insert_screenshot(db, *, session_id: str, url: str, image_data: bytes, action_taken: str, step_number: int):
     ts = now_iso()
@@ -308,4 +316,13 @@ async def list_run_logs(db, session_id: str):
         "SELECT * FROM run_logs WHERE session_id = ? ORDER BY id ASC",
         (session_id,),
         fetch="all",
+    )
+
+
+async def get_last_run_log(db, session_id: str):
+    return await _run(
+        db,
+        "SELECT * FROM run_logs WHERE session_id = ? ORDER BY id DESC LIMIT 1",
+        (session_id,),
+        fetch="one",
     )

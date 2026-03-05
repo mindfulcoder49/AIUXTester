@@ -20,9 +20,15 @@ from llm.registry import validate_provider_model, validate_config_for_tier, Conf
 from config import MODEL_REGISTRY
 from agent.test_graph import run_test_session
 from agent.postmortem_graph import run_postmortem
-from config import REFRESH_TOKEN_EXPIRE_DAYS, QUEUE_MODE
+from config import (
+    REFRESH_TOKEN_EXPIRE_DAYS,
+    QUEUE_MODE,
+    SESSION_WATCHDOG_INTERVAL_SECONDS,
+    SESSION_WATCHDOG_STALE_SECONDS,
+)
 from jobs import run_session_job
 from queueing import get_async_redis, get_queue, redis_available, session_channel
+from rq import Retry
 
 app = FastAPI()
 logger = logging.getLogger("aiuxtester")
@@ -38,6 +44,7 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 SESSION_STREAMS: dict[str, asyncio.Queue] = {}
 SESSION_TASKS: dict[str, asyncio.Task] = {}
+WATCHDOG_TASK: Optional[asyncio.Task] = None
 
 
 def _extract_bearer(request: Request) -> Optional[str]:
@@ -61,8 +68,18 @@ def refresh_expiry_iso() -> str:
     return (datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)).isoformat()
 
 
+def normalize_start_url(value: str) -> str:
+    v = (value or "").strip()
+    if not v:
+        return v
+    if v.startswith(("http://", "https://", "/")):
+        return v
+    return f"https://{v}"
+
+
 @app.on_event("startup")
 async def startup():
+    global WATCHDOG_TASK
     await init_db()
     # create admin user if env vars present
     import os
@@ -81,10 +98,83 @@ async def startup():
                     tier="pro",
                 )
 
+    if QUEUE_MODE == "redis":
+        WATCHDOG_TASK = asyncio.create_task(session_watchdog())
+
 
 @app.on_event("shutdown")
 async def shutdown():
+    global WATCHDOG_TASK
+    if WATCHDOG_TASK:
+        WATCHDOG_TASK.cancel()
+        try:
+            await WATCHDOG_TASK
+        except asyncio.CancelledError:
+            pass
+        WATCHDOG_TASK = None
     await close_db()
+
+
+def _parse_iso(ts: Optional[str]) -> Optional[datetime]:
+    if not ts:
+        return None
+    try:
+        return datetime.fromisoformat(ts)
+    except Exception:
+        return None
+
+
+async def session_watchdog():
+    while True:
+        try:
+            if QUEUE_MODE != "redis":
+                await asyncio.sleep(SESSION_WATCHDOG_INTERVAL_SECONDS)
+                continue
+
+            now = datetime.utcnow()
+            redis_conn = get_async_redis() if redis_available() else None
+            async with open_db() as db:
+                running = await queries.list_running_sessions(db)
+                for row in running:
+                    session_id = row["id"]
+                    last_log = await queries.get_last_run_log(db, session_id)
+                    if not last_log:
+                        # Session is queued but not yet started; don't mark stale.
+                        continue
+                    ref = _parse_iso(last_log.get("timestamp")) or _parse_iso(row.get("updated_at")) or _parse_iso(row.get("created_at"))
+                    if not ref:
+                        continue
+                    age = (now - ref).total_seconds()
+                    if age < SESSION_WATCHDOG_STALE_SECONDS:
+                        continue
+                    reason = (
+                        f"Session appears stalled/crashed: no progress log for {int(age)}s. "
+                        "Please retry the run."
+                    )
+                    await queries.update_session_status(db, session_id, "failed", reason)
+                    await queries.insert_run_log(
+                        db,
+                        session_id=session_id,
+                        step_number=None,
+                        level="error",
+                        message="Session marked failed by watchdog",
+                        details=reason,
+                    )
+                    if redis_conn:
+                        await redis_conn.publish(
+                            session_channel(session_id),
+                            json.dumps({"type": "status", "data": {"status": "failed", "end_reason": reason}}),
+                        )
+                        await redis_conn.publish(
+                            session_channel(session_id),
+                            json.dumps({"type": "error", "data": {"message": reason}}),
+                        )
+            if redis_conn:
+                await redis_conn.close()
+        except Exception:
+            logger.exception("Session watchdog loop failed")
+
+        await asyncio.sleep(SESSION_WATCHDOG_INTERVAL_SECONDS)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -201,7 +291,7 @@ async def create_session(payload: dict, user=Depends(get_current_user), db=Depen
         session_id=session_id,
         user_id=user["id"],
         goal=payload.get("goal", ""),
-        start_url=payload.get("start_url", ""),
+        start_url=normalize_start_url(payload.get("start_url", "")),
         mode=config.get("mode", "desktop"),
         provider=provider,
         model=model,
@@ -209,7 +299,14 @@ async def create_session(payload: dict, user=Depends(get_current_user), db=Depen
     )
 
     if QUEUE_MODE == "redis" and redis_available():
-        get_queue("sessions").enqueue(run_session_job, session_id, job_id=session_id)
+        get_queue("sessions").enqueue(
+            run_session_job,
+            session_id,
+            job_id=session_id,
+            retry=Retry(max=2, interval=[10, 30]),
+            result_ttl=3600,
+            failure_ttl=86400,
+        )
     else:
         queue = asyncio.Queue()
         SESSION_STREAMS[session_id] = queue
