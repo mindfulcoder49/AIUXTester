@@ -51,6 +51,21 @@ def build_graph(db, emit: Callable[[dict], None]):
             raise RuntimeError("Browser page unavailable")
         return page
 
+    async def settle_page_after_action():
+        page = require_page()
+        try:
+            await page.wait_for_load_state("domcontentloaded", timeout=10000)
+        except Exception:
+            pass
+        try:
+            await page.wait_for_load_state("networkidle", timeout=3000)
+        except Exception:
+            pass
+        try:
+            await page.wait_for_timeout(600)
+        except Exception:
+            pass
+
     async def log_event(state: AgentState, level: str, message: str, details: str | None = None):
         await insert_run_log(
             db,
@@ -128,6 +143,17 @@ def build_graph(db, emit: Callable[[dict], None]):
 
         try:
             await log_event(state, "debug", "Requesting next action from LLM", f"provider={state['provider']} model={state['model']}")
+            await log_event(
+                state,
+                "debug",
+                "LLM prompt payload",
+                (
+                    "[SYSTEM PROMPT]\n"
+                    f"{prompt}\n\n"
+                    "[USER PROMPT]\n"
+                    f"{user}"
+                ),
+            )
             action = llm.generate_action(
                 system_prompt=prompt,
                 user_prompt=user,
@@ -139,6 +165,9 @@ def build_graph(db, emit: Callable[[dict], None]):
             next_action = action.model_dump()
             if not next_action.get("intent"):
                 next_action["intent"] = f"Execute {next_action.get('action')} to make progress toward the goal."
+            last_action_result = next_action.get("last_action_result")
+            if state["action_history"] and isinstance(last_action_result, str) and last_action_result.strip():
+                state["action_history"][-1]["action_outcome"] = last_action_result.strip()
             state["next_action"] = next_action
             await log_event(
                 state,
@@ -147,7 +176,8 @@ def build_graph(db, emit: Callable[[dict], None]):
                 (
                     f"action={state['next_action'].get('action')} "
                     f"intent={state['next_action'].get('intent')} "
-                    f"why={state['next_action'].get('reasoning')}"
+                    f"why={state['next_action'].get('reasoning')} "
+                    f"last_action_result={state['next_action'].get('last_action_result')}"
                 ),
             )
         except Exception as exc:
@@ -165,9 +195,11 @@ def build_graph(db, emit: Callable[[dict], None]):
         if state["status"] != "running":
             return state
 
-        action = state["next_action"]
-        action_type = action["action"]
-        params = action.get("params", {})
+        action = state.get("next_action") or {}
+        action_type = action.get("action")
+        params = action.get("params") if isinstance(action, dict) else {}
+        if not isinstance(params, dict):
+            params = {}
         intent = action.get("intent")
         reasoning = action.get("reasoning", "")
         memory_update = action.get("memory_update")
@@ -177,10 +209,12 @@ def build_graph(db, emit: Callable[[dict], None]):
         if action_type == "execute_js":
             success, error, result = await browser_actions.execute_javascript(require_page(), params.get("script", ""))
             execution_result = result
+            await settle_page_after_action()
             if result:
                 await log_event(state, "debug", "JS execution result", str(result)[:500])
         elif action_type == "navigate":
             success, error = await browser_actions.navigate(require_page(), params.get("url"))
+            await settle_page_after_action()
         elif action_type == "save_to_memory":
             if params.get("key") and params.get("value") and not memory_update:
                 memory_update = {params["key"]: params["value"]}
@@ -198,9 +232,10 @@ def build_graph(db, emit: Callable[[dict], None]):
             success, error = False, f"Unknown action: {action_type}"
 
         # memory updates captured by capture node
-        state["_last_action"] = {
+        state["last_action"] = {
             "action_type": action_type,
             "action_params": params,
+            "executed_on_url": state.get("current_url"),
             "intent": intent,
             "reasoning": reasoning,
             "execution_result": execution_result,
@@ -219,7 +254,7 @@ def build_graph(db, emit: Callable[[dict], None]):
     async def capture(state: AgentState):
         if state["status"] != "running":
             return state
-        last_action = state.get("_last_action", {})
+        last_action = state.get("last_action") or {}
         step = state["current_step"] + 1
         png = await browser.screenshot()
         html_raw = await browser.get_html()
@@ -242,12 +277,17 @@ def build_graph(db, emit: Callable[[dict], None]):
             step_number=step,
         )
 
+        action_type = last_action.get("action_type") or "unknown_action"
+        action_params = last_action.get("action_params")
+        if not isinstance(action_params, dict):
+            action_params = {}
+
         await insert_action(
             db,
             session_id=state["session_id"],
             step_number=step,
-            action_type=last_action.get("action_type", ""),
-            action_params=last_action.get("action_params", {}),
+            action_type=action_type,
+            action_params=action_params,
             intent=last_action.get("intent"),
             reasoning=last_action.get("reasoning", ""),
             action_result=last_action.get("execution_result"),
@@ -272,20 +312,23 @@ def build_graph(db, emit: Callable[[dict], None]):
 
         record = {
             "step": step,
-            "action_type": last_action.get("action_type"),
-            "action_params": last_action.get("action_params"),
+            "action_type": action_type,
+            "action_params": action_params,
+            "executed_on_url": last_action.get("executed_on_url"),
             "intent": last_action.get("intent"),
             "reasoning": last_action.get("reasoning"),
             "execution_result": last_action.get("execution_result"),
+            "action_outcome": None,
             "url": url,
             "success": bool(last_action.get("success", False)),
             "error": last_action.get("error"),
         }
         state["action_history"].append(record)
+        state["last_action"] = None
         state["pages_visited"].append(url)
 
         # loop detection
-        fp = fingerprint(last_action.get("action_type", ""), last_action.get("action_params", {}))
+        fp = fingerprint(action_type, action_params)
         state["recent_action_fingerprints"].append(fp)
         window = state["run_config"].get("loop_detection_window", 10)
         state["recent_action_fingerprints"] = state["recent_action_fingerprints"][-window:]
@@ -294,7 +337,7 @@ def build_graph(db, emit: Callable[[dict], None]):
             "type": "step",
             "data": {
                 "step": step,
-                "action": last_action.get("action_type"),
+                "action": action_type,
                 "intent": last_action.get("intent"),
                 "reasoning": last_action.get("reasoning"),
                 "screenshot_id": screenshot_id,
@@ -379,6 +422,7 @@ async def run_test_session(*, db, session_row, user_tier: str, emit: Callable[[d
         "status": "running",
         "end_reason": None,
         "next_action": None,
+        "last_action": None,
         "postmortem_run_analysis": None,
         "postmortem_html_analysis": None,
         "postmortem_recommendations": None,

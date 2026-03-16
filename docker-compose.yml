@@ -7,8 +7,6 @@ services:
       - MARIADB_DATABASE=aiuxtester
       - MARIADB_USER=aiuxtester
       - MARIADB_PASSWORD=aiuxtester
-    ports:
-      - "3306:3306"
     volumes:
       - mariadb_data:/var/lib/mysql
     healthcheck:
@@ -19,8 +17,6 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -31,7 +27,7 @@ services:
     build: .
     command: bash -lc "uvicorn main:app --host 0.0.0.0 --port 8080"
     ports:
-      - "8080:8080"
+      - "127.0.0.1::8080"
     environment:
       - PORT=8080
       - DB_BACKEND=mariadb

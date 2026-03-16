@@ -89,6 +89,8 @@ const Home = {
         <div class="hero-links">
           <a href="#/docs">Documentation</a>
           <a href="#/costs">Cost Model</a>
+          <a href="#/login" v-if="!store.token">Login</a>
+          <a href="#/register" v-if="!store.token">Register</a>
         </div>
         <button class="cta" @click="goDashboard" v-if="store.token">Open Dashboard</button>
       </section>
@@ -726,7 +728,11 @@ const SessionDetail = {
             <span class="log-level">{{ l.level || "info" }}</span>
             <span class="log-step">step {{ l.step ?? "-" }}</span>
             <span class="log-message">{{ l.message }}</span>
-            <small v-if="l.details">{{ l.details }}</small>
+            <small v-if="l.details && !l.isPrompt">{{ l.details }}</small>
+            <details v-if="l.isPrompt" class="log-details">
+              <summary>Show full prompt</summary>
+              <pre class="log-prompt">{{ l.details }}</pre>
+            </details>
           </div>
         </div>
       </section>
@@ -739,6 +745,14 @@ const SessionDetail = {
     const logs = ref([]);
     let eventSource = null;
     let refreshTimer = null;
+
+    const mapLog = (l) => ({
+      level: l.level,
+      message: l.message,
+      details: l.details,
+      step: l.step_number ?? l.step ?? null,
+      isPrompt: l.message === "LLM prompt payload",
+    });
 
     const loadSession = async (id) => {
       const data = await apiRequest(`/sessions/${id}`);
@@ -756,12 +770,7 @@ const SessionDetail = {
         reasoning: actionByStep[s.step_number]?.reasoning || "",
         image: `/screenshots/${s.id}?token=${store.token}`,
       }));
-      logs.value = (data.logs || []).map((l) => ({
-        level: l.level,
-        message: l.message,
-        details: l.details,
-        step: l.step_number,
-      }));
+      logs.value = (data.logs || []).map(mapLog);
       try {
         const report = await apiRequest(`/sessions/${id}/postmortem`);
         if (report) {
@@ -800,28 +809,28 @@ const SessionDetail = {
             session.value.status = msg.data.status;
             session.value.end_reason = msg.data.end_reason;
           }
-          logs.value.push({
+          logs.value.push(mapLog({
             level: "info",
             message: `Session status changed to ${msg.data.status}`,
             details: msg.data.end_reason || "",
             step: null,
-          });
+          }));
         }
         if (msg.type === "log") {
-          logs.value.push({
+          logs.value.push(mapLog({
             level: msg.data.level || "info",
             message: msg.data.message,
             details: msg.data.details || "",
             step: msg.data.step,
-          });
+          }));
         }
         if (msg.type === "error") {
-          logs.value.push({
+          logs.value.push(mapLog({
             level: "error",
             message: "Runtime error",
             details: msg.data.message || "",
             step: null,
-          });
+          }));
         }
       };
     };

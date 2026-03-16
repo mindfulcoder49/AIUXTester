@@ -136,6 +136,8 @@ class OpenAIClient:
             coerced["memory_update"] = None
         if "intent" not in coerced:
             coerced["intent"] = "Recover from invalid model output and keep exploring."
+        if "last_action_result" not in coerced:
+            coerced["last_action_result"] = None
         self._normalize_action_params(coerced)
         return coerced
 

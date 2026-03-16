@@ -6,9 +6,11 @@ class ActionRecord(TypedDict):
     step: int
     action_type: str
     action_params: dict
+    executed_on_url: Optional[str]
     intent: Optional[str]
     reasoning: str
     execution_result: Optional[str]
+    action_outcome: Optional[str]
     url: str
     success: bool
     error: Optional[str]
@@ -40,6 +42,7 @@ class AgentState(TypedDict):
     status: Literal["running", "completed", "failed", "stopped", "loop_detected"]
     end_reason: Optional[str]
     next_action: Optional[dict]
+    last_action: Optional[dict]
 
     postmortem_run_analysis: Optional[str]
     postmortem_html_analysis: Optional[str]
@@ -58,6 +61,7 @@ class AgentAction(BaseModel):
     params: dict
     intent: Optional[str] = None
     reasoning: str
+    last_action_result: Optional[str] = None
     memory_update: Optional[Dict[str, str]] = None
 
     @model_validator(mode="after")

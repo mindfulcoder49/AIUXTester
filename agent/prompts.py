@@ -12,16 +12,35 @@ def format_memory(memory: Dict[str, str]) -> str:
 def format_history(history: List[dict], max_items: int) -> str:
     if not history:
         return "No actions yet."
-    items = history[-max_items:]
+    valid = []
+    for h in history:
+        if not isinstance(h, dict):
+            continue
+        action_type = h.get("action_type")
+        action_params = h.get("action_params")
+        if not action_type or not isinstance(action_params, dict):
+            continue
+        valid.append(h)
+    if not valid:
+        return "No valid actions yet."
+    items = valid[-max_items:]
     lines = []
     for h in items:
         params = str(h["action_params"])
+        action_url = h.get("executed_on_url") or h.get("url") or "unknown_url"
+        intent = h.get("intent") or ""
+        reasoning = h.get("reasoning") or ""
         result = h.get("execution_result")
+        outcome = h.get("action_outcome") or ""
         if result is None:
-            lines.append(f"{h['step']}. {h['action_type']} {params} (success={h['success']})")
+            lines.append(
+                f"{h['step']}. on={action_url} action={h['action_type']} params={params} "
+                f"(success={h['success']}) intent={intent} why={reasoning} outcome={outcome}"
+            )
         else:
             lines.append(
-                f"{h['step']}. {h['action_type']} {params} (success={h['success']}, result={result})"
+                f"{h['step']}. on={action_url} action={h['action_type']} params={params} "
+                f"(success={h['success']}, result={result}) intent={intent} why={reasoning} outcome={outcome}"
             )
     return "\n".join(lines)
 
@@ -34,6 +53,7 @@ def system_prompt(goal: str, mode: str, memory: Dict[str, str], history: List[di
         "If you are stuck or repeating actions without meaningful progress, use give_up() with a concrete reason.",
         "If the task is complete, use finish() with a clear summary.",
         "Always include a short reasoning for the chosen action.",
+        "Always include last_action_result: a concise description of what happened after the previous action (what changed, what was learned, whether it progressed).",
         "Use save_to_memory for any credentials or facts needed later.",
     ]
 
@@ -53,8 +73,9 @@ def system_prompt(goal: str, mode: str, memory: Dict[str, str], history: List[di
         f"## Rules\n- " + "\n- ".join(rules)
         + "\n\n## Required Output Format\n"
         + "Return ONLY valid JSON with these exact top-level keys:\n"
-        + '{"action":"<one of allowed actions>","params":{"script":"<JS code when action is execute_js>"},"intent":"<what you are trying to accomplish next>","reasoning":"<why this action is best now>","memory_update":null}\n'
+        + '{"action":"<one of allowed actions>","params":{"script":"<JS code when action is execute_js>"},"intent":"<what you are trying to accomplish next>","reasoning":"<why this action is best now>","last_action_result":"<what happened after previous action>","memory_update":null}\n'
         + "Make intent concrete and user-facing (what you are trying to do on this step).\n"
+        + "If there is no previous action to evaluate, set last_action_result to null.\n"
         + "Do not return page summaries, markdown, or any extra keys."
     )
 
