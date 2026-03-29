@@ -1,7 +1,13 @@
 from utils.loop_detector import fingerprint, is_looping
 
 
-def _record(step: int, action: str, params: dict | None = None, url: str = "https://example.com"):
+def _record(
+    step: int,
+    action: str,
+    params: dict | None = None,
+    url: str = "https://example.com",
+    execution_result: str | None = None,
+):
     return {
         "step": step,
         "action_type": action,
@@ -10,6 +16,7 @@ def _record(step: int, action: str, params: dict | None = None, url: str = "http
         "url": url,
         "success": True,
         "error": None,
+        "execution_result": execution_result,
     }
 
 
@@ -76,6 +83,26 @@ def test_register_flow_with_repeated_clicks_gets_extra_runway():
         _record(6, "click", {"x": 640, "y": 320}, "https://example.com/register"),
         _record(7, "click", {"x": 640, "y": 320}, "https://example.com/register"),
         _record(8, "click", {"x": 640, "y": 320}, "https://example.com/register"),
+    ]
+    fps = [fingerprint(h["action_type"], h["action_params"]) for h in history]
+    assert is_looping(fps, {}, history) is False
+
+
+def test_flags_repeated_execute_js_inspection_with_no_new_result():
+    history = [
+        _record(1, "execute_js", {"script": "(() => document.title)()"}, execution_result=None),
+        _record(2, "execute_js", {"script": "(() => document.title)()"}, execution_result=None),
+        _record(3, "execute_js", {"script": "(() => document.title)()"}, execution_result=None),
+    ]
+    fps = [fingerprint(h["action_type"], h["action_params"]) for h in history]
+    assert is_looping(fps, {}, history) is True
+
+
+def test_does_not_flag_execute_js_when_results_change():
+    history = [
+        _record(1, "execute_js", {"script": "(() => document.title)()"}, execution_result='{"title":"A"}'),
+        _record(2, "execute_js", {"script": "(() => location.href)()"}, execution_result='{"href":"https://example.com/a"}'),
+        _record(3, "execute_js", {"script": "(() => document.body.innerText)()"}, execution_result='{"body":"Next"}'),
     ]
     fps = [fingerprint(h["action_type"], h["action_params"]) for h in history]
     assert is_looping(fps, {}, history) is False

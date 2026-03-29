@@ -23,7 +23,7 @@ from llm.openai_client import OpenAIClient
 from llm.gemini_client import GeminiClient
 from llm.claude_client import ClaudeClient
 from utils.image import to_base64_png
-from utils.loop_detector import fingerprint
+from utils.loop_detector import fingerprint, is_looping
 from utils.html_cleaner import sanitize_html
 
 
@@ -360,6 +360,19 @@ def build_graph(db, emit: Callable[[dict], None]):
             if not state["action_history"][-1]["success"]:
                 state["status"] = "failed"
                 state["end_reason"] = "Stopped on first error"
+
+        if state["status"] == "running" and state["run_config"].get("loop_detection_enabled", True):
+            loop_rules = state["run_config"].get("loop_detection_rules", {})
+            if is_looping(
+                state["recent_action_fingerprints"],
+                loop_rules,
+                state["action_history"],
+            ):
+                state["status"] = "loop_detected"
+                state["end_reason"] = (
+                    "Detected repeated low-progress actions on the same page"
+                )
+                await log_event(state, "warning", "Loop detection triggered", state["end_reason"])
 
         # max steps
         if state["status"] == "running" and state["current_step"] >= state["run_config"].get("max_steps", 50):

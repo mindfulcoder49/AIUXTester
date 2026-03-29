@@ -32,11 +32,39 @@ def _active_form_flow(action_history: List[dict], lookback: int = 12) -> bool:
     return formy_url and typed_recently and clicked_recently
 
 
+def _repeated_execute_js_inspection(action_history: List[dict], repeat_count: int = 3) -> bool:
+    if len(action_history) < repeat_count:
+        return False
+
+    tail = action_history[-repeat_count:]
+    if any(a.get("action_type") != "execute_js" for a in tail):
+        return False
+    if not all(a.get("success", True) for a in tail):
+        return False
+    if len({a.get("url") for a in tail}) != 1:
+        return False
+
+    signatures = {_signature(a) for a in tail}
+    normalized_results = {
+        (a.get("execution_result") or "").strip()
+        for a in tail
+        if isinstance(a.get("execution_result"), str) or a.get("execution_result") is None
+    }
+    if len(normalized_results) <= 1:
+        return True
+    if len(signatures) == 1:
+        return True
+    return False
+
+
 def is_looping(fingerprints: List[str], rules: Dict, action_history: List[dict] | None = None) -> bool:
     if not fingerprints:
         return False
 
     action_history = action_history or []
+    if _repeated_execute_js_inspection(action_history):
+        return True
+
     repeat_single = rules.get("repeat_single", 4)
     repeat_alternating = rules.get("repeat_alternating", 3)
     min_actions = rules.get("min_actions_before_loop", 8)

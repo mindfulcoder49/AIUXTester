@@ -55,6 +55,9 @@ def system_prompt(goal: str, mode: str, memory: Dict[str, str], history: List[di
         "Always include a short reasoning for the chosen action.",
         "Always include last_action_result: a concise description of what happened after the previous action (what changed, what was learned, whether it progressed).",
         "Use save_to_memory for any credentials or facts needed later.",
+        "Prefer execute_js probes that return concise JSON-serializable results, not scripts that only cause side effects.",
+        "Do not repeat substantially the same execute_js inspection on the same URL if the previous inspection already succeeded and the page has not changed.",
+        "After one or two successful inspections, either move to a new question or finish with findings instead of re-extracting the same data.",
     ]
 
     return (
@@ -76,6 +79,8 @@ def system_prompt(goal: str, mode: str, memory: Dict[str, str], history: List[di
         + '{"action":"<one of allowed actions>","params":{"script":"<JS code when action is execute_js>"},"intent":"<what you are trying to accomplish next>","reasoning":"<why this action is best now>","last_action_result":"<what happened after previous action>","memory_update":null}\n'
         + "Make intent concrete and user-facing (what you are trying to do on this step).\n"
         + "If there is no previous action to evaluate, set last_action_result to null.\n"
+        + "If action=finish, params.summary should be a short findings report with this shape:\n"
+        + "Verdict: <one sentence>\nFindings:\n- <issue or confirmation>\n- <issue or confirmation>\nNext step: <one concrete recommendation>\n"
         + "Do not return page summaries, markdown, or any extra keys."
     )
 

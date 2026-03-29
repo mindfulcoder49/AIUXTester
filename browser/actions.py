@@ -81,16 +81,45 @@ async def execute_javascript(page: Page, script: str) -> Tuple[bool, str | None,
     try:
         result = await page.evaluate(
             """
-            (jsCode) => {
-              const fn = new Function(jsCode);
-              const out = fn();
-              if (out === undefined || out === null) return null;
-              if (typeof out === "string") return out;
+            async (jsCode) => {
+              const normalize = (out) => {
+                if (out === undefined || out === null) return null;
+                if (typeof out === "string") return out;
+                try {
+                  return JSON.stringify(out);
+                } catch (_) {
+                  return String(out);
+                }
+              };
+
+              const isSyntaxLikeError = (error) => {
+                if (!error) return false;
+                const text = `${error.name || ""} ${error.message || ""}`.toLowerCase();
+                return (
+                  text.includes("syntaxerror") ||
+                  text.includes("illegal return") ||
+                  text.includes("unexpected token") ||
+                  text.includes("unexpected identifier") ||
+                  text.includes("missing") ||
+                  text.includes("unterminated")
+                );
+              };
+
               try {
-                return JSON.stringify(out);
-              } catch (_) {
-                return String(out);
+                // First treat the script as an expression so snippets like
+                // (() => ({ ok: true }))() or document.title return directly.
+                const expressionResult = await eval(jsCode);
+                return normalize(expressionResult);
+              } catch (expressionError) {
+                if (!isSyntaxLikeError(expressionError)) {
+                  throw expressionError;
+                }
               }
+
+              const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+              const fn = new AsyncFunction(jsCode);
+              const statementResult = await fn();
+              return normalize(statementResult);
             }
             """,
             script,
