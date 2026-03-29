@@ -24,6 +24,7 @@ env/
 *.sqlite
 *.sqlite3
 *.log
+reports/scenario_runs/
 
 # Node / frontend
 node_modules/

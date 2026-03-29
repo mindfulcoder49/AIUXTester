@@ -1,0 +1,373 @@
+[
+  {
+    "id": "homepage-first-impression",
+    "title": "Homepage First Impression",
+    "persona": "A first-time visitor who has never heard of PublicDataWatch",
+    "entry_url": "https://publicdatawatch.com/",
+    "surface": "homepage",
+    "tags": ["homepage", "orientation", "messaging"],
+    "goal": "Figure out what this product is, who it is for, and what the first useful action should be.",
+    "success_question": "Would a first-time visitor understand the product promise and know what to do next within one minute?",
+    "constraints": [
+      "You will not read every section carefully.",
+      "You are willing to inspect the homepage but not wander all over the site."
+    ],
+    "devices": ["desktop", "mobile"],
+    "variants": [
+      {
+        "id_suffix": "skeptical",
+        "label": "skeptical",
+        "goal_append": "You are skeptical that this is real civic data and you want evidence that it is not empty AI marketing.",
+        "extra_constraints": ["You distrust grand claims without concrete proof."],
+        "extra_tags": ["skeptical", "trust"]
+      }
+    ]
+  },
+  {
+    "id": "homepage-linkedin-arrival",
+    "title": "Homepage Arrival From Social Post",
+    "persona": "A LinkedIn visitor clicking in from a short brag post",
+    "entry_url": "https://publicdatawatch.com/?utm_source=linkedin&utm_medium=social&utm_campaign=scenario_bank",
+    "surface": "homepage",
+    "tags": ["homepage", "social", "acquisition"],
+    "goal": "Decide whether the landing experience matches the expectation created by a social post and whether it quickly leads into a useful action.",
+    "success_question": "Does the homepage convert curiosity from social into a clear next step without feeling like a bait-and-switch?",
+    "constraints": [
+      "You came in cold and have limited patience.",
+      "You are scanning, not researching."
+    ],
+    "devices": ["desktop", "mobile"]
+  },
+  {
+    "id": "crime-preview-supported-typed",
+    "title": "Crime Preview For A Supported Address",
+    "persona": "A renter checking whether a block feels concerning before making a decision",
+    "entry_url": "https://publicdatawatch.com/crime-address",
+    "surface": "crime-address",
+    "tags": ["crime-address", "supported", "address-search", "activation"],
+    "goal": "Use a supported address and decide whether the preview quickly answers what is happening near the address.",
+    "success_question": "Does the flow make it obvious what crime is nearby and whether the preview is worth paying attention to?",
+    "constraints": [
+      "Do not assume technical knowledge.",
+      "Use a known supported address when needed, such as 851 Broadway Everett MA 02149."
+    ],
+    "devices": ["desktop", "mobile"],
+    "variants": [
+      {
+        "id_suffix": "hurried",
+        "label": "hurried",
+        "goal_append": "You are in a hurry and will abandon quickly if the preview feels slow or confusing.",
+        "extra_constraints": ["You will not wait long without visible progress."],
+        "extra_tags": ["hurried", "speed"]
+      }
+    ]
+  },
+  {
+    "id": "crime-preview-unsupported",
+    "title": "Unsupported Address Experience",
+    "persona": "A user in an uncovered area who still wants to know whether this site could help later",
+    "entry_url": "https://publicdatawatch.com/crime-address",
+    "surface": "crime-address",
+    "tags": ["crime-address", "unsupported", "coverage", "trust"],
+    "goal": "Try an unsupported address and judge whether the unsupported state is respectful, clear, and worth engaging with.",
+    "success_question": "Does the unsupported flow preserve trust and make the notify-me offer feel legitimate?",
+    "constraints": [
+      "Use an address outside current coverage.",
+      "You are annoyed but still open to being notified later."
+    ],
+    "devices": ["desktop", "mobile"]
+  },
+  {
+    "id": "crime-preview-use-my-location",
+    "title": "Use My Location Flow",
+    "persona": "A mobile user who wants the app to just tell them about the place they are standing",
+    "entry_url": "https://publicdatawatch.com/crime-address",
+    "surface": "crime-address",
+    "tags": ["crime-address", "geolocation", "mobile", "activation"],
+    "goal": "Evaluate whether the geolocation flow feels trustworthy, understandable, and effective.",
+    "success_question": "Would a cautious user be willing to use location sharing here, and if they do, does the result feel correct?",
+    "constraints": [
+      "You are privacy-sensitive.",
+      "Pay attention to consent cues and whether the resulting address feels believable."
+    ],
+    "devices": ["mobile"],
+    "variants": [
+      {
+        "id_suffix": "privacy-sensitive",
+        "label": "privacy-sensitive",
+        "goal_append": "You are especially uncomfortable granting browser location access unless the value proposition and privacy posture are obvious.",
+        "extra_constraints": ["You may refuse geolocation if the request feels premature."],
+        "extra_tags": ["privacy", "consent"]
+      }
+    ]
+  },
+  {
+    "id": "crime-preview-score-comprehension",
+    "title": "Score Comprehension In Preview",
+    "persona": "A normal person trying to make sense of whether the score is good, bad, or typical",
+    "entry_url": "https://publicdatawatch.com/crime-address",
+    "surface": "crime-address",
+    "tags": ["crime-address", "score", "comprehension"],
+    "goal": "Use a supported address and judge whether the score explanation is understandable without technical knowledge.",
+    "success_question": "Would a non-technical visitor understand what the score means and why they should care?",
+    "constraints": [
+      "Avoid specialist crime-analysis language.",
+      "Prefer plain-language interpretation over technical explanation."
+    ],
+    "devices": ["desktop", "mobile"]
+  },
+  {
+    "id": "crime-preview-trend-comprehension",
+    "title": "Trend Context Comprehension",
+    "persona": "A cautious homebuyer looking for directional context, not raw statistical theory",
+    "entry_url": "https://publicdatawatch.com/crime-address",
+    "surface": "crime-address",
+    "tags": ["crime-address", "trends", "comprehension"],
+    "goal": "Judge whether the trend context feels useful or too technical for an ordinary decision-maker.",
+    "success_question": "Does the trend explanation actually help a normal person interpret the address, or does it feel like analyst jargon?",
+    "constraints": [
+      "You care about practical meaning, not methodology details."
+    ],
+    "devices": ["desktop", "mobile"]
+  },
+  {
+    "id": "pricing-plan-comprehension",
+    "title": "Pricing Plan Comprehension",
+    "persona": "A budget-conscious resident deciding whether the basic paid plan is worth it",
+    "entry_url": "https://publicdatawatch.com/subscription",
+    "surface": "pricing",
+    "tags": ["pricing", "plans", "conversion"],
+    "goal": "Understand the difference between the plans and decide whether the value ladder makes sense.",
+    "success_question": "Can a normal person tell what $5 gets them, what $15 adds, and why either plan might be worth paying for?",
+    "constraints": [
+      "You do not want to decode a feature spreadsheet.",
+      "You are price-sensitive."
+    ],
+    "devices": ["desktop", "mobile"],
+    "variants": [
+      {
+        "id_suffix": "professional",
+        "label": "professional-buyer",
+        "goal_append": "You are a reporter or agent deciding whether the more expensive plan is justified for repeated work.",
+        "extra_constraints": ["You compare the pro plan against real recurring work needs."],
+        "extra_tags": ["professional", "upsell"]
+      }
+    ]
+  },
+  {
+    "id": "city-page-boston",
+    "title": "Boston City Page Value",
+    "persona": "A Boston-area user wanting to know whether the city page has a clear purpose",
+    "entry_url": "https://publicdatawatch.com/boston",
+    "surface": "city-page",
+    "tags": ["city-page", "boston", "seo", "orientation"],
+    "goal": "Decide whether the Boston landing page stands on its own as a helpful region entry point.",
+    "success_question": "Would someone landing directly on the Boston page understand what they can do next and why it matters?",
+    "constraints": [
+      "Assume the user landed from search, not from the homepage."
+    ],
+    "devices": ["desktop", "mobile"]
+  },
+  {
+    "id": "city-page-everett",
+    "title": "Everett City Page Relevance",
+    "persona": "An Everett resident checking whether this site seems local and credible",
+    "entry_url": "https://publicdatawatch.com/everett",
+    "surface": "city-page",
+    "tags": ["city-page", "everett", "trust", "seo"],
+    "goal": "Judge whether the Everett page feels specifically useful for Everett rather than like a generic city template.",
+    "success_question": "Does the page feel local enough to build trust and hand users into the right next step?",
+    "constraints": [
+      "You are sensitive to generic or templated local content."
+    ],
+    "devices": ["desktop", "mobile"]
+  },
+  {
+    "id": "city-page-new-york",
+    "title": "New York Data-Type Expectation",
+    "persona": "A New York visitor trying to understand what kind of data is actually available",
+    "entry_url": "https://publicdatawatch.com/new-york",
+    "surface": "city-page",
+    "tags": ["city-page", "new-york", "coverage", "expectation-setting"],
+    "goal": "Determine whether the city page sets expectations honestly when the coverage is not crime-first.",
+    "success_question": "Would a New York user understand what is available here without feeling misled?",
+    "constraints": [
+      "Pay attention to whether the page implies unsupported features."
+    ],
+    "devices": ["desktop", "mobile"]
+  },
+  {
+    "id": "explore-map-discoverability",
+    "title": "Explore Tool Discoverability",
+    "persona": "A curious visitor who wants more than one address and wonders what the advanced tools are for",
+    "entry_url": "https://publicdatawatch.com/combined-map",
+    "surface": "explore",
+    "tags": ["explore", "advanced-tools", "discoverability"],
+    "goal": "Figure out whether the advanced map feels approachable and connected to the main value proposition.",
+    "success_question": "Does the full data map feel like a sensible next step, or like a disconnected power-user tool?",
+    "constraints": [
+      "You are not a GIS expert.",
+      "You may abandon if the page feels overwhelming."
+    ],
+    "devices": ["desktop"]
+  },
+  {
+    "id": "trends-page-value",
+    "title": "Trend Reports Value",
+    "persona": "A reporter trying to decide whether the trends surface is useful enough to revisit",
+    "entry_url": "https://publicdatawatch.com/trends",
+    "surface": "trends",
+    "tags": ["trends", "reporter", "professional"],
+    "goal": "Decide whether the trends page communicates why its findings matter and who should care.",
+    "success_question": "Would a reporter understand what the trends page offers and whether it is worth deeper exploration?",
+    "constraints": [
+      "You care about useful signal, not decorative metrics."
+    ],
+    "devices": ["desktop", "mobile"]
+  },
+  {
+    "id": "scores-page-orientation",
+    "title": "Neighborhood Scores Orientation",
+    "persona": "A user who clicked into scores but does not understand H3 or analytic scoring systems",
+    "entry_url": "https://publicdatawatch.com/scoring-reports",
+    "surface": "scores",
+    "tags": ["scores", "orientation", "technicality"],
+    "goal": "Judge whether the scores area provides enough context for a non-expert to know what they are looking at.",
+    "success_question": "Does the page orient newcomers, or does it assume too much technical context?",
+    "constraints": [
+      "You do not know what H3 means.",
+      "You are willing to scan but not study documentation first."
+    ],
+    "devices": ["desktop", "mobile"]
+  },
+  {
+    "id": "help-center-usefulness",
+    "title": "Help Center Utility",
+    "persona": "A confused user looking for fast reassurance about how the product works",
+    "entry_url": "https://publicdatawatch.com/help",
+    "surface": "help",
+    "tags": ["help", "support", "trust"],
+    "goal": "Determine whether the help center actually reduces confusion or just repeats marketing language.",
+    "success_question": "Would a confused user leave the help center more oriented and more trusting?",
+    "constraints": [
+      "You came here because the product already confused you."
+    ],
+    "devices": ["desktop", "mobile"]
+  },
+  {
+    "id": "for-users-page-plain-language",
+    "title": "For Users Page Plain Language",
+    "persona": "A resident trying to understand the product in ordinary language",
+    "entry_url": "https://publicdatawatch.com/help/users",
+    "surface": "help",
+    "tags": ["help", "for-users", "plain-language"],
+    "goal": "Evaluate whether the For Users page uses language that ordinary people can understand and trust.",
+    "success_question": "Does the page explain the product in human terms instead of platform jargon?",
+    "constraints": [
+      "You dislike buzzwords and over-explanation."
+    ],
+    "devices": ["desktop", "mobile"]
+  },
+  {
+    "id": "about-page-trust",
+    "title": "About Page Trustworthiness",
+    "persona": "A skeptical visitor deciding whether this is a serious product or a throwaway side project",
+    "entry_url": "https://publicdatawatch.com/about-us",
+    "surface": "about",
+    "tags": ["about", "trust", "credibility"],
+    "goal": "Judge whether the About page builds confidence in the company and product.",
+    "success_question": "Does the About page make the organization feel real, capable, and worth trusting?",
+    "constraints": [
+      "You are looking for signs of seriousness, not fluff."
+    ],
+    "devices": ["desktop", "mobile"]
+  },
+  {
+    "id": "trial-offer-believability",
+    "title": "Free Preview And Trial Believability",
+    "persona": "A user who expects a catch and assumes the preview/trial might be manipulative",
+    "entry_url": "https://publicdatawatch.com/crime-address",
+    "surface": "crime-address",
+    "tags": ["trial", "trust", "conversion"],
+    "goal": "Decide whether the free preview and follow-on offer feel fair and believable rather than manipulative.",
+    "success_question": "Would a skeptical person feel okay trying the free preview and considering the paid continuation?",
+    "constraints": [
+      "You are sensitive to dark-pattern trial language."
+    ],
+    "devices": ["desktop", "mobile"],
+    "variants": [
+      {
+        "id_suffix": "price-sensitive",
+        "label": "price-sensitive",
+        "goal_append": "You assume most subscriptions are not worth it and want a very concrete reason to pay.",
+        "extra_constraints": ["You compare the cost against doing nothing."],
+        "extra_tags": ["price-sensitive", "conversion"]
+      }
+    ]
+  },
+  {
+    "id": "unsupported-city-page-route",
+    "title": "Unsupported User Starting From A City Page",
+    "persona": "A visitor landing on the site hoping their city is covered",
+    "entry_url": "https://publicdatawatch.com/",
+    "surface": "homepage",
+    "tags": ["coverage", "discovery", "unsupported"],
+    "goal": "Try to determine whether your city is covered and whether the site helps you recover if it is not.",
+    "success_question": "Is coverage discoverable enough to avoid a bad surprise later in the funnel?",
+    "constraints": [
+      "You are not willing to waste time entering addresses if coverage is unclear."
+    ],
+    "devices": ["desktop", "mobile"]
+  },
+  {
+    "id": "mobile-nav-clarity",
+    "title": "Mobile Navigation Clarity",
+    "persona": "A mobile user trying to orient quickly without hunting through menus",
+    "entry_url": "https://publicdatawatch.com/",
+    "surface": "navigation",
+    "tags": ["mobile", "navigation", "orientation"],
+    "goal": "Determine whether mobile navigation makes the main surfaces discoverable without confusion.",
+    "success_question": "Can a mobile user quickly find preview, cities, pricing, and help without getting lost?",
+    "constraints": [
+      "Assume thumb-driven one-handed use."
+    ],
+    "devices": ["mobile"]
+  },
+  {
+    "id": "address-search-confidence",
+    "title": "Address Search Confidence",
+    "persona": "A user nervous about whether the search box will understand their address",
+    "entry_url": "https://publicdatawatch.com/",
+    "surface": "homepage",
+    "tags": ["search", "confidence", "activation"],
+    "goal": "Judge whether the homepage search affordance feels trustworthy and obvious enough to try.",
+    "success_question": "Does the search box look like something that will work for a real address right away?",
+    "constraints": [
+      "You are hesitant to invest effort unless the search seems credible."
+    ],
+    "devices": ["desktop", "mobile"]
+  },
+  {
+    "id": "reporter-multi-neighborhood-workflow",
+    "title": "Reporter Multi-Neighborhood Workflow",
+    "persona": "A local reporter comparing multiple places for a story lead",
+    "entry_url": "https://publicdatawatch.com/",
+    "surface": "multi-surface",
+    "tags": ["reporter", "professional", "workflow"],
+    "goal": "Assess whether the site makes a credible case for repeated professional use across more than one location.",
+    "success_question": "Would a reporter believe this tool can support repeated neighborhood comparisons and not just one-off curiosity?",
+    "constraints": [
+      "You need to see a path from first preview to deeper professional tooling."
+    ],
+    "devices": ["desktop"],
+    "variants": [
+      {
+        "id_suffix": "deadline",
+        "label": "deadline-pressure",
+        "goal_append": "You are on deadline and need the value proposition to reveal itself quickly.",
+        "extra_constraints": ["You will not read long explanations before deciding."],
+        "extra_tags": ["hurried", "deadline"]
+      }
+    ]
+  }
+]

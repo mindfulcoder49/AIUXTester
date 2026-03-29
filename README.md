@@ -88,6 +88,42 @@ make test
 make e2e
 ```
 
+## Scenario Bank And Daily Runs
+
+AIUXTester now supports a local scenario-bank workflow for longer-running product pressure tests.
+
+List bundled banks:
+
+```bash
+source .venv/bin/activate
+python scenario_runner.py list-banks
+```
+
+Preview the deterministic daily selection:
+
+```bash
+source .venv/bin/activate
+python scenario_runner.py preview --bank publicdatawatch --date 2026-03-29 --count 6
+```
+
+Run a local daily batch against the bundled PublicDataWatch scenario bank:
+
+```bash
+source .venv/bin/activate
+python scenario_runner.py run-daily \
+  --bank publicdatawatch \
+  --count 4 \
+  --model gpt-5-mini \
+  --max-steps 8 \
+  --email scenario-runner@example.com
+```
+
+Notes:
+
+- The runner uses AIUXTester's own HTTP API in-process and forces `QUEUE_MODE=inline` for local batch execution.
+- Reports are written to `reports/scenario_runs/` as JSON and Markdown.
+- The bundled `publicdatawatch` bank is adversarial by design: it rotates personas, surfaces, devices, and skepticism/urgency variants instead of only running a tiny fixed canary set.
+
 ## Fly.io
 1. Update app name in `fly.toml` if needed.
 2. Provision Redis and MariaDB (self-managed VM is fine), then capture:
