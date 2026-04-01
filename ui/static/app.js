@@ -473,6 +473,7 @@ const Dashboard = {
         <div class="actions">
           <button @click="goHome">Home</button>
           <button @click="goDocs">Docs</button>
+          <button @click="goCompetitions">Competitions</button>
           <button @click="logout">Logout</button>
           <button @click="goCosts">Cost</button>
           <button v-if="store.user?.role === 'admin'" @click="goAdmin">Admin</button>
@@ -641,6 +642,7 @@ const Dashboard = {
     const goCosts = () => router.push("/costs");
     const goHome = () => router.push("/");
     const goDocs = () => router.push("/docs");
+    const goCompetitions = () => router.push("/competitions");
 
     onMounted(async () => {
       await loadSessions();
@@ -666,6 +668,7 @@ const Dashboard = {
       goCosts,
       goHome,
       goDocs,
+      goCompetitions,
     };
   },
 };
@@ -682,8 +685,34 @@ const SessionDetail = {
         </div>
         <div>
           <button @click="stop">Stop</button>
+          <button v-if="isTerminal" @click="openSubmitModal">Submit to Competition</button>
         </div>
       </header>
+
+      <div class="modal-overlay" v-if="showSubmitModal" @click.self="showSubmitModal = false">
+        <div class="modal-box">
+          <h3>Submit to Competition</h3>
+          <div v-if="openCompetitions.length === 0" class="muted">No open competitions.</div>
+          <template v-else>
+            <div class="row">
+              <label>Competition</label>
+              <select v-model="submitCompetitionId">
+                <option v-for="c in openCompetitions" :key="c.id" :value="c.id">{{ c.name }}</option>
+              </select>
+            </div>
+            <div class="row">
+              <label>Note (optional)</label>
+              <textarea v-model="submitNote" placeholder="Describe what this run tested..."></textarea>
+            </div>
+            <div>
+              <button @click="submitToCompetition" :disabled="!submitCompetitionId">Submit</button>
+              <button @click="showSubmitModal = false">Cancel</button>
+            </div>
+          </template>
+          <p v-if="submitError" class="error">{{ submitError }}</p>
+          <p v-if="submitSuccess" class="success">Submitted successfully!</p>
+        </div>
+      </div>
 
       <section class="panel">
         <h3>Live Stream</h3>
@@ -743,8 +772,41 @@ const SessionDetail = {
     const steps = ref([]);
     const postmortem = ref(null);
     const logs = ref([]);
+    const showSubmitModal = ref(false);
+    const openCompetitions = ref([]);
+    const submitCompetitionId = ref("");
+    const submitNote = ref("");
+    const submitError = ref("");
+    const submitSuccess = ref(false);
     let eventSource = null;
     let refreshTimer = null;
+
+    const terminalStatuses = new Set(["completed", "failed", "stopped", "loop_detected"]);
+    const isTerminal = computed(() => terminalStatuses.has(session.value?.status));
+
+    const openSubmitModal = async () => {
+      submitError.value = "";
+      submitSuccess.value = false;
+      submitNote.value = "";
+      const all = await apiRequest("/competitions");
+      openCompetitions.value = all.filter((c) => c.status === "open");
+      submitCompetitionId.value = openCompetitions.value[0]?.id || "";
+      showSubmitModal.value = true;
+    };
+
+    const submitToCompetition = async () => {
+      submitError.value = "";
+      submitSuccess.value = false;
+      try {
+        await apiRequest(`/competitions/${submitCompetitionId.value}/entries`, {
+          method: "POST",
+          body: JSON.stringify({ session_id: session.value.id, note: submitNote.value }),
+        });
+        submitSuccess.value = true;
+      } catch (e) {
+        submitError.value = e.message;
+      }
+    };
 
     const mapLog = (l) => ({
       level: l.level,
@@ -864,7 +926,11 @@ const SessionDetail = {
       if (refreshTimer) clearInterval(refreshTimer);
     });
 
-    return { session, steps, postmortem, logs, stop, back, formatPostmortemValue };
+    return {
+      session, steps, postmortem, logs, stop, back, formatPostmortemValue,
+      isTerminal, showSubmitModal, openCompetitions, submitCompetitionId,
+      submitNote, submitError, submitSuccess, openSubmitModal, submitToCompetition,
+    };
   },
 };
 
@@ -874,13 +940,22 @@ const Admin = {
       <header>
         <button @click="back">Back</button>
         <h2>Admin</h2>
+        <div class="tab-bar">
+          <button v-for="t in tabs" :key="t.key"
+                  :class="['tab-btn', { active: activeTab === t.key }]"
+                  @click="switchTab(t.key)">{{ t.label }}</button>
+        </div>
       </header>
 
-      <section class="panel">
-        <h3>Users</h3>
+      <!-- ── Users ───────────────────────────────────────────── -->
+      <section class="panel" v-if="activeTab === 'users'">
+        <h3>Users ({{ users.length }})</h3>
         <div class="users">
           <div v-for="u in users" :key="u.id" class="user-row">
-            <div>{{ u.email }}</div>
+            <div>
+              <strong>{{ u.email }}</strong>
+              <span class="muted"> · {{ u.role }} · joined {{ (u.created_at || '').slice(0, 10) }}</span>
+            </div>
             <select v-model="u.tier" @change="updateTier(u)">
               <option value="free">free</option>
               <option value="basic">basic</option>
@@ -889,9 +964,135 @@ const Admin = {
           </div>
         </div>
       </section>
+
+      <!-- ── Sessions ────────────────────────────────────────── -->
+      <section class="panel" v-if="activeTab === 'sessions'">
+        <h3>Sessions</h3>
+        <div class="admin-filters">
+          <input v-model="sessionSearch" placeholder="filter by email or URL…" />
+          <select v-model="sessionStatus" @change="loadSessions">
+            <option value="">all statuses</option>
+            <option value="running">running</option>
+            <option value="completed">completed</option>
+            <option value="failed">failed</option>
+            <option value="stopped">stopped</option>
+            <option value="loop_detected">loop_detected</option>
+          </select>
+          <select v-model="sessionLimit" @change="loadSessions">
+            <option :value="25">25</option>
+            <option :value="50">50</option>
+            <option :value="100">100</option>
+            <option :value="250">250</option>
+          </select>
+          <button @click="loadSessions">Refresh</button>
+        </div>
+        <div class="table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>User</th><th>URL</th><th>Goal</th><th>Status</th>
+                <th>Actions</th><th>Provider / Model</th><th>Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="s in filteredSessions" :key="s.id"
+                  class="clickable-row" @click="openSession(s.id)">
+                <td>{{ s.email }}</td>
+                <td class="truncate" :title="s.start_url">{{ s.start_url }}</td>
+                <td class="truncate" :title="s.goal">{{ s.goal }}</td>
+                <td><span class="status" :data-status="s.status">{{ s.status }}</span></td>
+                <td>{{ s.action_count }}</td>
+                <td>{{ s.provider }} / {{ s.model }}</td>
+                <td>{{ (s.created_at || '').slice(0, 16).replace('T', ' ') }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="muted" v-if="filteredSessions.length === 0">No sessions match.</p>
+        </div>
+      </section>
+
+      <!-- ── Memory ──────────────────────────────────────────── -->
+      <section class="panel" v-if="activeTab === 'memory'">
+        <h3>Agent Memory</h3>
+        <div class="admin-filters">
+          <input v-model="memorySessionId" placeholder="session ID…" @keyup.enter="loadMemory" />
+          <button @click="loadMemory">Load</button>
+        </div>
+        <div v-if="memory !== null">
+          <p class="muted" v-if="Object.keys(memory).length === 0">No memory saved for this session.</p>
+          <table class="admin-table" v-else>
+            <thead><tr><th>Key</th><th>Value</th></tr></thead>
+            <tbody>
+              <tr v-for="(val, key) in memory" :key="key">
+                <td><strong>{{ key }}</strong></td>
+                <td class="memory-val">{{ val }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p v-if="memoryError" class="error">{{ memoryError }}</p>
+      </section>
+
+      <!-- ── Logs ────────────────────────────────────────────── -->
+      <section class="panel" v-if="activeTab === 'logs'">
+        <h3>Run Logs</h3>
+        <div class="admin-filters">
+          <input v-model="logsSessionId" placeholder="session ID…" @keyup.enter="loadLogs" />
+          <select v-model="logsLevel">
+            <option value="">all levels</option>
+            <option value="error">error</option>
+            <option value="warning">warning</option>
+            <option value="info">info</option>
+          </select>
+          <button @click="loadLogs">Load</button>
+        </div>
+        <div class="logs" v-if="logs.length">
+          <div v-for="(l, i) in filteredLogs" :key="i" class="log-row" :data-level="l.level">
+            <span class="log-level">{{ l.level || 'info' }}</span>
+            <span class="log-step">step {{ l.step_number ?? '-' }}</span>
+            <span class="log-message">{{ l.message }}</span>
+            <small v-if="l.details">{{ l.details }}</small>
+          </div>
+          <p class="muted" v-if="filteredLogs.length === 0">No logs at this level.</p>
+        </div>
+        <p v-if="logsError" class="error">{{ logsError }}</p>
+      </section>
+
+      <!-- ── Queue ───────────────────────────────────────────── -->
+      <section class="panel" v-if="activeTab === 'queue'">
+        <h3>Queue Stats</h3>
+        <div v-if="queue">
+          <div class="row"><label>Redis available</label>
+            <strong :style="{ color: queue.available ? 'var(--ok)' : 'var(--err)' }">
+              {{ queue.available ? 'yes' : 'no' }}
+            </strong>
+          </div>
+          <template v-if="queue.available">
+            <div class="row"><label>Queued (waiting)</label><span>{{ queue.queued }}</span></div>
+            <div class="row"><label>Active (running)</label><span>{{ queue.active }}</span></div>
+            <div class="row"><label>Failed</label>
+              <span :style="{ color: queue.failed > 0 ? 'var(--err)' : 'inherit' }">{{ queue.failed }}</span>
+            </div>
+            <div class="row"><label>Finished</label><span>{{ queue.finished }}</span></div>
+            <div class="row"><label>Deferred</label><span>{{ queue.deferred }}</span></div>
+          </template>
+          <p v-if="queue.error" class="error">{{ queue.error }}</p>
+        </div>
+        <button @click="loadQueue">Refresh</button>
+      </section>
     </div>
   `,
   setup() {
+    const tabs = [
+      { key: "users",    label: "Users" },
+      { key: "sessions", label: "Sessions" },
+      { key: "memory",   label: "Memory" },
+      { key: "logs",     label: "Logs" },
+      { key: "queue",    label: "Queue" },
+    ];
+    const activeTab = ref("users");
+
+    // ── Users ──────────────────────────────────────────────────
     const users = ref([]);
     const loadUsers = async () => {
       users.value = await apiRequest("/admin/users");
@@ -902,10 +1103,91 @@ const Admin = {
         body: JSON.stringify({ tier: u.tier }),
       });
     };
+
+    // ── Sessions ───────────────────────────────────────────────
+    const sessions = ref([]);
+    const sessionSearch = ref("");
+    const sessionStatus = ref("");
+    const sessionLimit = ref(50);
+    const loadSessions = async () => {
+      const params = new URLSearchParams();
+      if (sessionStatus.value) params.set("status", sessionStatus.value);
+      params.set("limit", sessionLimit.value);
+      sessions.value = await apiRequest(`/admin/sessions?${params}`);
+    };
+    const filteredSessions = computed(() => {
+      const q = sessionSearch.value.toLowerCase();
+      if (!q) return sessions.value;
+      return sessions.value.filter(
+        (s) => (s.email || "").toLowerCase().includes(q) ||
+               (s.start_url || "").toLowerCase().includes(q) ||
+               (s.goal || "").toLowerCase().includes(q)
+      );
+    });
+    const openSession = (id) => router.push(`/sessions/${id}`);
+
+    // ── Memory ─────────────────────────────────────────────────
+    const memory = ref(null);
+    const memorySessionId = ref("");
+    const memoryError = ref("");
+    const loadMemory = async () => {
+      memoryError.value = "";
+      memory.value = null;
+      if (!memorySessionId.value.trim()) return;
+      try {
+        memory.value = await apiRequest(`/admin/sessions/${memorySessionId.value.trim()}/memory`);
+      } catch (e) {
+        memoryError.value = e.message;
+      }
+    };
+
+    // ── Logs ───────────────────────────────────────────────────
+    const logs = ref([]);
+    const logsSessionId = ref("");
+    const logsLevel = ref("");
+    const logsError = ref("");
+    const loadLogs = async () => {
+      logsError.value = "";
+      logs.value = [];
+      if (!logsSessionId.value.trim()) return;
+      try {
+        logs.value = await apiRequest(`/sessions/${logsSessionId.value.trim()}/logs`);
+      } catch (e) {
+        logsError.value = e.message;
+      }
+    };
+    const filteredLogs = computed(() => {
+      if (!logsLevel.value) return logs.value;
+      return logs.value.filter((l) => (l.level || "info") === logsLevel.value);
+    });
+
+    // ── Queue ──────────────────────────────────────────────────
+    const queue = ref(null);
+    const loadQueue = async () => {
+      queue.value = await apiRequest("/admin/queue");
+    };
+
+    // ── Tab switching ──────────────────────────────────────────
+    const switchTab = (key) => {
+      activeTab.value = key;
+      if (key === "users" && !users.value.length) loadUsers();
+      if (key === "sessions" && !sessions.value.length) loadSessions();
+      if (key === "queue") loadQueue();
+    };
+
     const back = () => router.push("/app");
 
     onMounted(loadUsers);
-    return { users, updateTier, back };
+
+    return {
+      tabs, activeTab, switchTab, back,
+      users, updateTier,
+      sessions, sessionSearch, sessionStatus, sessionLimit,
+      loadSessions, filteredSessions, openSession,
+      memory, memorySessionId, memoryError, loadMemory,
+      logs, logsSessionId, logsLevel, logsError, loadLogs, filteredLogs,
+      queue, loadQueue,
+    };
   },
 };
 
@@ -1039,6 +1321,252 @@ const Costs = {
   },
 };
 
+const CompetitionList = {
+  template: `
+    <div class="competition-list">
+      <header>
+        <button @click="back">Back</button>
+        <h2>Vibecode Olympics</h2>
+        <button v-if="store.user?.role === 'admin'" @click="showCreate = !showCreate">+ New Competition</button>
+      </header>
+
+      <section class="panel" v-if="showCreate">
+        <h3>Create Competition</h3>
+        <form @submit.prevent="createCompetition">
+          <input v-model="newName" placeholder="Competition name" required />
+          <textarea v-model="newDescription" placeholder="Description (optional)"></textarea>
+          <div>
+            <button type="submit">Create</button>
+            <button type="button" @click="showCreate = false; newName = ''; newDescription = ''">Cancel</button>
+          </div>
+          <p v-if="createError" class="error">{{ createError }}</p>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div v-if="competitions.length === 0" class="muted">No competitions yet.</div>
+        <div v-for="c in competitions" :key="c.id" class="competition-card" @click="view(c.id)">
+          <div class="competition-card-body">
+            <div>
+              <strong>{{ c.name }}</strong>
+              <span class="muted" v-if="c.description"> — {{ c.description }}</span>
+            </div>
+            <div class="competition-card-meta">
+              <span class="status" :data-status="c.status">{{ c.status }}</span>
+              <span class="muted">{{ c.entry_count }} {{ c.entry_count === 1 ? 'entry' : 'entries' }}</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  `,
+  setup() {
+    const competitions = ref([]);
+    const showCreate = ref(false);
+    const newName = ref("");
+    const newDescription = ref("");
+    const createError = ref("");
+
+    const load = async () => {
+      competitions.value = await apiRequest("/competitions");
+    };
+
+    const createCompetition = async () => {
+      createError.value = "";
+      try {
+        await apiRequest("/competitions", {
+          method: "POST",
+          body: JSON.stringify({ name: newName.value, description: newDescription.value }),
+        });
+        newName.value = "";
+        newDescription.value = "";
+        showCreate.value = false;
+        await load();
+      } catch (e) {
+        createError.value = e.message;
+      }
+    };
+
+    const view = (id) => router.push(`/competitions/${id}`);
+    const back = () => router.push("/app");
+
+    onMounted(load);
+    return { store, competitions, showCreate, newName, newDescription, createError, createCompetition, view, back };
+  },
+};
+
+const CompetitionDetail = {
+  template: `
+    <div class="competition-detail">
+      <header>
+        <button @click="back">Back</button>
+        <div>
+          <h2>{{ competition?.name }}</h2>
+          <p v-if="competition?.description" class="muted">{{ competition.description }}</p>
+          <span class="status" :data-status="competition?.status">{{ competition?.status }}</span>
+        </div>
+        <div v-if="store.user?.role === 'admin' && competition" class="admin-controls">
+          <button v-if="competition.status === 'open'" @click="closeEntries">Close Entries</button>
+          <template v-if="competition.status === 'closed'">
+            <select v-model="judgeProvider" @change="judgeModel = judgeModels[0] || ''">
+              <option v-for="p in providers" :key="p" :value="p">{{ p }}</option>
+            </select>
+            <select v-model="judgeModel">
+              <option v-for="m in judgeModels" :key="m" :value="m">{{ m }}</option>
+            </select>
+            <button @click="runCompetition" :disabled="running">Run Competition</button>
+          </template>
+          <p v-if="adminError" class="error">{{ adminError }}</p>
+        </div>
+      </header>
+
+      <section class="panel">
+        <h3>Entries ({{ entries.length }})</h3>
+        <div v-if="entries.length === 0" class="muted">No entries yet.</div>
+        <div v-for="e in entries" :key="e.id" class="entry-row">
+          <div class="entry-main">
+            <a :href="'#/sessions/' + e.session_id" @click.stop>{{ e.start_url || e.session_id }}</a>
+            <div class="muted" v-if="e.goal">{{ e.goal }}</div>
+            <div class="muted entry-note" v-if="e.note">{{ e.note }}</div>
+          </div>
+          <div class="entry-meta">
+            <span class="muted">{{ e.email }}</span>
+            <span class="status" :data-status="e.session_status">{{ e.session_status }}</span>
+            <span class="muted" v-if="e.action_count">{{ e.action_count }} actions</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" v-if="rounds.length">
+        <h3>Bracket</h3>
+        <div class="bracket">
+          <div v-for="(roundMatches, ri) in rounds" :key="ri" class="bracket-round">
+            <h4>Round {{ ri + 1 }}</h4>
+            <div v-for="match in roundMatches" :key="match.id" class="match-card">
+              <div v-for="eid in match.entry_ids_parsed" :key="eid"
+                   class="match-entry"
+                   :class="{ 'match-entry--winner': match.winner_entry_id && eid === match.winner_entry_id }">
+                {{ entryLabel(eid) }}
+              </div>
+              <details v-if="match.judge_reasoning" class="match-reasoning">
+                <summary>Judge reasoning</summary>
+                <p>{{ match.judge_reasoning }}</p>
+              </details>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  `,
+  setup() {
+    const competition = ref(null);
+    const entries = ref([]);
+    const matches = ref([]);
+    const judgeProvider = ref("openai");
+    const judgeModel = ref("");
+    const running = ref(false);
+    const adminError = ref("");
+    let pollTimer = null;
+
+    const providers = computed(() => Object.keys(store.models || {}));
+    const judgeModels = computed(() => store.models?.[judgeProvider.value] || []);
+
+    const entryMap = computed(() => {
+      const m = {};
+      entries.value.forEach((e) => { m[e.id] = e; });
+      return m;
+    });
+
+    const entryLabel = (eid) => {
+      const e = entryMap.value[eid];
+      if (!e) return `Entry #${eid}`;
+      const site = (e.start_url || e.session_id).replace(/^https?:\/\//, "").replace(/\/$/, "");
+      return site;
+    };
+
+    const rounds = computed(() => {
+      if (!matches.value.length) return [];
+      const byRound = {};
+      matches.value.forEach((m) => {
+        const rn = m.round_number;
+        if (!byRound[rn]) byRound[rn] = [];
+        byRound[rn].push({ ...m, entry_ids_parsed: JSON.parse(m.entry_ids || "[]") });
+      });
+      const maxRound = Math.max(...Object.keys(byRound).map(Number));
+      return Array.from({ length: maxRound }, (_, i) => byRound[i + 1] || []);
+    });
+
+    const load = async () => {
+      const id = router.currentRoute.value.params.id;
+      const data = await apiRequest(`/competitions/${id}`);
+      competition.value = data.competition;
+      entries.value = data.entries || [];
+      matches.value = data.matches || [];
+    };
+
+    const closeEntries = async () => {
+      adminError.value = "";
+      try {
+        await apiRequest(`/competitions/${competition.value.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status: "closed" }),
+        });
+        await load();
+      } catch (e) {
+        adminError.value = e.message;
+      }
+    };
+
+    const runCompetition = async () => {
+      adminError.value = "";
+      running.value = true;
+      try {
+        await apiRequest(`/competitions/${competition.value.id}/run`, {
+          method: "POST",
+          body: JSON.stringify({ provider: judgeProvider.value, model: judgeModel.value }),
+        });
+        await load();
+        startPoll();
+      } catch (e) {
+        adminError.value = e.message;
+        running.value = false;
+      }
+    };
+
+    const startPoll = () => {
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(async () => {
+        await load();
+        if (competition.value?.status === "complete") {
+          clearInterval(pollTimer);
+          running.value = false;
+        }
+      }, 3000);
+    };
+
+    const back = () => router.push("/competitions");
+
+    onMounted(async () => {
+      await load();
+      if (!judgeProvider.value && providers.value.length) judgeProvider.value = providers.value[0];
+      if (!judgeModel.value && judgeModels.value.length) judgeModel.value = judgeModels.value[0];
+      if (competition.value?.status === "running") {
+        running.value = true;
+        startPoll();
+      }
+    });
+
+    onBeforeUnmount(() => { if (pollTimer) clearInterval(pollTimer); });
+
+    return {
+      store, competition, entries, matches, rounds,
+      judgeProvider, judgeModel, judgeModels, providers,
+      running, adminError,
+      entryLabel, closeEntries, runCompetition, back,
+    };
+  },
+};
+
 const routes = [
   { path: "/", component: Home },
   { path: "/docs", component: Docs },
@@ -1048,6 +1576,8 @@ const routes = [
   { path: "/app", component: Dashboard },
   { path: "/sessions/:id", component: SessionDetail },
   { path: "/admin", component: Admin },
+  { path: "/competitions", component: CompetitionList },
+  { path: "/competitions/:id", component: CompetitionDetail },
 ];
 
 const router = createRouter({ history: createWebHashHistory(), routes });

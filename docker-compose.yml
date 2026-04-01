@@ -1,12 +1,13 @@
 services:
+
   mariadb:
     image: mariadb:11.4
     command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
     environment:
-      - MARIADB_ROOT_PASSWORD=rootpass
-      - MARIADB_DATABASE=aiuxtester
-      - MARIADB_USER=aiuxtester
-      - MARIADB_PASSWORD=aiuxtester
+      MARIADB_ROOT_PASSWORD: rootpass
+      MARIADB_DATABASE: aiuxtester
+      MARIADB_USER: aiuxtester
+      MARIADB_PASSWORD: aiuxtester
     volumes:
       - mariadb_data:/var/lib/mysql
     healthcheck:
@@ -17,6 +18,8 @@ services:
 
   redis:
     image: redis:7-alpine
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -25,15 +28,22 @@ services:
 
   web:
     build: .
-    command: bash -lc "uvicorn main:app --host 0.0.0.0 --port 8080"
     ports:
-      - "127.0.0.1::8080"
+      - "8001:8080"
     environment:
-      - PORT=8080
-      - DB_BACKEND=mariadb
-      - DATABASE_URL=mysql://aiuxtester:aiuxtester@mariadb:3306/aiuxtester
-      - QUEUE_MODE=redis
-      - REDIS_URL=redis://redis:6379/0
+      PORT: "8080"
+      DB_BACKEND: mariadb
+      DATABASE_URL: mysql://aiuxtester:aiuxtester@mariadb:3306/aiuxtester
+      QUEUE_MODE: redis
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:-replace-with-a-strong-random-secret}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-30}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-password}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     depends_on:
       mariadb:
         condition: service_healthy
@@ -42,17 +52,23 @@ services:
 
   worker:
     build: .
-    command: bash -lc "python worker_main.py"
+    command: python worker_main.py
     environment:
-      - DB_BACKEND=mariadb
-      - DATABASE_URL=mysql://aiuxtester:aiuxtester@mariadb:3306/aiuxtester
-      - QUEUE_MODE=redis
-      - REDIS_URL=redis://redis:6379/0
+      DB_BACKEND: mariadb
+      DATABASE_URL: mysql://aiuxtester:aiuxtester@mariadb:3306/aiuxtester
+      QUEUE_MODE: redis
+      REDIS_URL: redis://redis:6379/0
+      BROWSER_PAGE_TIMEOUT_MS: ${BROWSER_PAGE_TIMEOUT_MS:-60000}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     depends_on:
       mariadb:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # Scale workers: docker compose up --scale worker=7
 
 volumes:
   mariadb_data:
+  redis_data:

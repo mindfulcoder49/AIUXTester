@@ -58,6 +58,8 @@ def system_prompt(goal: str, mode: str, memory: Dict[str, str], history: List[di
         "Prefer execute_js probes that return concise JSON-serializable results, not scripts that only cause side effects.",
         "Do not repeat substantially the same execute_js inspection on the same URL if the previous inspection already succeeded and the page has not changed.",
         "After one or two successful inspections, either move to a new question or finish with findings instead of re-extracting the same data.",
+        "Do not probe for or discuss CSRF tokens, authentication headers, API keys, or internal security tokens — focus on user-facing flows and outcomes.",
+        "When a form submission or login attempt succeeds or fails, report the user-visible result, not the underlying HTTP mechanism.",
     ]
 
     return (

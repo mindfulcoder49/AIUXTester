@@ -8,6 +8,10 @@ primary_region = "iad"
   MARIADB_DATABASE = "aiuxtester"
   MARIADB_USER = "aiuxtester"
 
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1024mb"
+
 [[mounts]]
   source = "mariadb_data"
   destination = "/var/lib/mysql"

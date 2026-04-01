@@ -98,3 +98,36 @@ CREATE TABLE IF NOT EXISTS run_logs (
     details     TEXT,
     timestamp   TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS competitions (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    description TEXT,
+    status      TEXT NOT NULL DEFAULT 'open',  -- open | closed | running | complete
+    created_by  TEXT NOT NULL REFERENCES users(id),
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS competition_entries (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    competition_id TEXT NOT NULL REFERENCES competitions(id),
+    session_id     TEXT NOT NULL REFERENCES sessions(id),
+    user_id        TEXT NOT NULL REFERENCES users(id),
+    note           TEXT,
+    submitted_at   TEXT NOT NULL,
+    UNIQUE(competition_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS competition_matches (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    competition_id  TEXT NOT NULL REFERENCES competitions(id),
+    round_number    INTEGER NOT NULL,
+    match_number    INTEGER NOT NULL,
+    entry_ids       TEXT NOT NULL,
+    winner_entry_id INTEGER REFERENCES competition_entries(id),
+    judge_reasoning TEXT,
+    status          TEXT NOT NULL DEFAULT 'pending',  -- pending | complete
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+);

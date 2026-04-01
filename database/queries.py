@@ -145,6 +145,28 @@ async def list_sessions_all(db):
     return await _run(db, "SELECT * FROM sessions ORDER BY created_at DESC", fetch="all")
 
 
+async def list_sessions_admin(db, *, status: Optional[str] = None, limit: int = 50):
+    """Sessions enriched with user email and action count, for the admin panel."""
+    where_parts = []
+    params: list = []
+    if status:
+        where_parts.append("s.status = ?")
+        params.append(status)
+    where = ("WHERE " + " AND ".join(where_parts)) if where_parts else ""
+    sql = f"""
+        SELECT s.*,
+               u.email,
+               (SELECT COUNT(*) FROM actions a WHERE a.session_id = s.id) AS action_count
+        FROM sessions s
+        LEFT JOIN users u ON s.user_id = u.id
+        {where}
+        ORDER BY s.created_at DESC
+        LIMIT ?
+    """
+    params.append(limit)
+    return await _run(db, sql, tuple(params), fetch="all")
+
+
 async def get_session(db, session_id: str):
     return await _run(db, "SELECT * FROM sessions WHERE id = ?", (session_id,), fetch="one")
 
@@ -325,4 +347,108 @@ async def get_last_run_log(db, session_id: str):
         "SELECT * FROM run_logs WHERE session_id = ? ORDER BY id DESC LIMIT 1",
         (session_id,),
         fetch="one",
+    )
+
+
+# Competitions
+async def create_competition(db, *, competition_id: str, name: str, description: Optional[str], created_by: str) -> None:
+    ts = now_iso()
+    await _run(
+        db,
+        "INSERT INTO competitions (id, name, description, status, created_by, created_at, updated_at) VALUES (?, ?, ?, 'open', ?, ?, ?)",
+        (competition_id, name, description, created_by, ts, ts),
+    )
+    await _commit(db)
+
+
+async def get_competition(db, competition_id: str):
+    return await _run(db, "SELECT * FROM competitions WHERE id = ?", (competition_id,), fetch="one")
+
+
+async def list_competitions(db):
+    return await _run(db, "SELECT * FROM competitions ORDER BY created_at DESC", fetch="all")
+
+
+async def update_competition_status(db, competition_id: str, status: str) -> None:
+    ts = now_iso()
+    await _run(db, "UPDATE competitions SET status = ?, updated_at = ? WHERE id = ?", (status, ts, competition_id))
+    await _commit(db)
+
+
+async def update_competition(db, competition_id: str, *, name: Optional[str] = None, description: Optional[str] = None) -> None:
+    ts = now_iso()
+    if name is not None:
+        await _run(db, "UPDATE competitions SET name = ?, updated_at = ? WHERE id = ?", (name, ts, competition_id))
+    if description is not None:
+        await _run(db, "UPDATE competitions SET description = ?, updated_at = ? WHERE id = ?", (description, ts, competition_id))
+    await _commit(db)
+
+
+# Competition entries
+async def add_competition_entry(db, *, competition_id: str, session_id: str, user_id: str, note: Optional[str]) -> int:
+    ts = now_iso()
+    row_id = await _run(
+        db,
+        "INSERT INTO competition_entries (competition_id, session_id, user_id, note, submitted_at) VALUES (?, ?, ?, ?, ?)",
+        (competition_id, session_id, user_id, note, ts),
+    )
+    await _commit(db)
+    return row_id
+
+
+async def get_competition_entry(db, entry_id: int):
+    return await _run(db, "SELECT * FROM competition_entries WHERE id = ?", (entry_id,), fetch="one")
+
+
+async def get_entry_for_user(db, competition_id: str, user_id: str):
+    return await _run(
+        db,
+        "SELECT * FROM competition_entries WHERE competition_id = ? AND user_id = ?",
+        (competition_id, user_id),
+        fetch="one",
+    )
+
+
+async def list_competition_entries(db, competition_id: str):
+    return await _run(
+        db,
+        "SELECT * FROM competition_entries WHERE competition_id = ? ORDER BY submitted_at ASC",
+        (competition_id,),
+        fetch="all",
+    )
+
+
+# Competition matches
+async def create_competition_match(
+    db, *, competition_id: str, round_number: int, match_number: int, entry_ids: list
+) -> int:
+    ts = now_iso()
+    row_id = await _run(
+        db,
+        """
+        INSERT INTO competition_matches (competition_id, round_number, match_number, entry_ids, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'pending', ?, ?)
+        """,
+        (competition_id, round_number, match_number, json.dumps(entry_ids), ts, ts),
+    )
+    await _commit(db)
+    return row_id
+
+
+async def update_competition_match(db, match_id: int, *, winner_entry_id: int, reasoning: str) -> None:
+    ts = now_iso()
+    await _run(
+        db,
+        "UPDATE competition_matches SET winner_entry_id = ?, judge_reasoning = ?, status = 'complete', updated_at = ? WHERE id = ?",
+        (winner_entry_id, reasoning, ts, match_id),
+    )
+    await _commit(db)
+
+
+async def list_competition_matches(db, competition_id: str):
+    return await _run(
+        db,
+        "SELECT * FROM competition_matches WHERE competition_id = ? ORDER BY round_number ASC, match_number ASC",
+        (competition_id,),
+        fetch="all",
     )

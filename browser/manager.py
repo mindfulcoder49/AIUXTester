@@ -10,6 +10,7 @@ from config import (
     USERAGENT_DESKTOP,
     USERAGENT_MOBILE,
     BROWSER_LAUNCH_TIMEOUT_MS,
+    BROWSER_PAGE_TIMEOUT_MS,
 )
 
 
@@ -55,6 +56,8 @@ class BrowserManager:
                 has_touch=False,
                 device_scale_factor=1,
             )
+        context.set_default_timeout(BROWSER_PAGE_TIMEOUT_MS)
+        context.set_default_navigation_timeout(BROWSER_PAGE_TIMEOUT_MS)
 
         self._page = await context.new_page()
         await stealth_async(self._page)

@@ -29,6 +29,7 @@ from config import (
 from jobs import run_session_job
 from queueing import get_async_redis, get_queue, redis_available, session_channel
 from rq import Retry
+from competition.runner import run_competition_job
 
 app = FastAPI()
 logger = logging.getLogger("aiuxtester")
@@ -262,9 +263,43 @@ async def admin_update_tier(user_id: str, data: UpdateTierRequest, admin=Depends
 
 
 @app.get("/admin/sessions")
-async def admin_list_sessions(admin=Depends(require_admin), db=Depends(get_db)):
-    rows = await queries.list_sessions_all(db)
+async def admin_list_sessions(
+    status: Optional[str] = None,
+    limit: int = 50,
+    admin=Depends(require_admin),
+    db=Depends(get_db),
+):
+    rows = await queries.list_sessions_admin(db, status=status, limit=min(limit, 500))
     return [dict(row) for row in rows]
+
+
+@app.get("/admin/sessions/{session_id}/memory")
+async def admin_session_memory(session_id: str, admin=Depends(require_admin), db=Depends(get_db)):
+    session = await queries.get_session(db, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return await queries.get_memory(db, session_id)
+
+
+@app.get("/admin/queue")
+async def admin_queue_stats(admin=Depends(require_admin)):
+    from queueing import get_sync_redis, redis_available
+    if not redis_available():
+        return {"available": False}
+    try:
+        from rq import Queue
+        conn = get_sync_redis()
+        q = Queue("sessions", connection=conn)
+        return {
+            "available": True,
+            "queued": q.count,
+            "active": len(q.started_job_registry),
+            "failed": len(q.failed_job_registry),
+            "finished": len(q.finished_job_registry),
+            "deferred": len(q.deferred_job_registry),
+        }
+    except Exception as exc:
+        return {"available": False, "error": str(exc)}
 
 
 # Sessions
@@ -510,3 +545,155 @@ async def stream(request: Request, session_id: str, token: Optional[str] = None,
                 yield f"data: {json.dumps(event)}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+# ── Competitions ─────────────────────────────────────────────────────────────
+
+TERMINAL_SESSION_STATUSES = {"completed", "failed", "stopped", "loop_detected"}
+
+
+@app.post("/competitions")
+async def create_competition(payload: dict, admin=Depends(require_admin), db=Depends(get_db)):
+    name = (payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    competition_id = str(uuid.uuid4())
+    await queries.create_competition(
+        db,
+        competition_id=competition_id,
+        name=name,
+        description=payload.get("description"),
+        created_by=admin["id"],
+    )
+    return {"competition_id": competition_id}
+
+
+@app.get("/competitions")
+async def list_competitions(user=Depends(get_current_user), db=Depends(get_db)):
+    rows = await queries.list_competitions(db)
+    result = []
+    for row in rows:
+        entries = await queries.list_competition_entries(db, row["id"])
+        result.append({**dict(row), "entry_count": len(entries)})
+    return result
+
+
+@app.get("/competitions/{competition_id}")
+async def get_competition(competition_id: str, user=Depends(get_current_user), db=Depends(get_db)):
+    competition = await queries.get_competition(db, competition_id)
+    if not competition:
+        raise HTTPException(status_code=404, detail="Competition not found")
+    entries = await queries.list_competition_entries(db, competition_id)
+    matches = await queries.list_competition_matches(db, competition_id)
+
+    # Enrich entries with session + user info (flattened for the frontend)
+    enriched_entries = []
+    for entry in entries:
+        session = await queries.get_session(db, entry["session_id"])
+        user_row = await queries.get_user_by_id(db, entry["user_id"])
+        actions = await queries.list_actions(db, entry["session_id"])
+        enriched_entries.append({
+            **dict(entry),
+            "email": user_row["email"] if user_row else None,
+            "start_url": session["start_url"] if session else None,
+            "goal": session["goal"] if session else None,
+            "session_status": session["status"] if session else None,
+            "action_count": len(actions),
+        })
+
+    return {
+        "competition": dict(competition),
+        "entries": enriched_entries,
+        "matches": [dict(m) for m in matches],
+    }
+
+
+@app.patch("/competitions/{competition_id}")
+async def update_competition(competition_id: str, payload: dict, admin=Depends(require_admin), db=Depends(get_db)):
+    competition = await queries.get_competition(db, competition_id)
+    if not competition:
+        raise HTTPException(status_code=404, detail="Competition not found")
+    await queries.update_competition(
+        db,
+        competition_id,
+        name=payload.get("name"),
+        description=payload.get("description"),
+    )
+    if "status" in payload:
+        allowed = {"open", "closed"}
+        if payload["status"] not in allowed:
+            raise HTTPException(status_code=400, detail=f"status must be one of {allowed}")
+        await queries.update_competition_status(db, competition_id, payload["status"])
+    return {"ok": True}
+
+
+@app.post("/competitions/{competition_id}/entries")
+async def submit_competition_entry(
+    competition_id: str, payload: dict, user=Depends(get_current_user), db=Depends(get_db)
+):
+    competition = await queries.get_competition(db, competition_id)
+    if not competition:
+        raise HTTPException(status_code=404, detail="Competition not found")
+    if competition["status"] != "open":
+        raise HTTPException(status_code=400, detail="Competition is not accepting entries")
+
+    session_id = (payload.get("session_id") or "").strip()
+    if not session_id:
+        raise HTTPException(status_code=400, detail="session_id is required")
+
+    session = await queries.get_session(db, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if session["user_id"] != user["id"]:
+        raise HTTPException(status_code=403, detail="Session does not belong to you")
+    if session["status"] not in TERMINAL_SESSION_STATUSES:
+        raise HTTPException(status_code=400, detail="Session must be completed before submitting")
+
+    existing = await queries.get_entry_for_user(db, competition_id, user["id"])
+    if existing:
+        raise HTTPException(status_code=409, detail="You have already submitted an entry to this competition")
+
+    entry_id = await queries.add_competition_entry(
+        db,
+        competition_id=competition_id,
+        session_id=session_id,
+        user_id=user["id"],
+        note=payload.get("note"),
+    )
+    return {"entry_id": entry_id}
+
+
+@app.post("/competitions/{competition_id}/run")
+async def run_competition(competition_id: str, payload: dict, admin=Depends(require_admin), db=Depends(get_db)):
+    competition = await queries.get_competition(db, competition_id)
+    if not competition:
+        raise HTTPException(status_code=404, detail="Competition not found")
+    if competition["status"] not in {"open", "closed"}:
+        raise HTTPException(status_code=400, detail=f"Competition cannot be run from status '{competition['status']}'")
+
+    entries = await queries.list_competition_entries(db, competition_id)
+    if len(entries) < 2:
+        raise HTTPException(status_code=400, detail="Need at least 2 entries to run a competition")
+
+    provider = payload.get("provider", "openai")
+    model = payload.get("model", "gpt-5-mini")
+
+    await queries.update_competition_status(db, competition_id, "closed")
+
+    if QUEUE_MODE == "redis" and redis_available():
+        get_queue("sessions").enqueue(
+            run_competition_job,
+            competition_id,
+            provider,
+            model,
+            job_id=f"competition-{competition_id}",
+            result_ttl=3600,
+            failure_ttl=86400,
+        )
+    else:
+        async def _run_inline():
+            from competition.runner import _run_competition
+            await _run_competition(competition_id, provider, model)
+        asyncio.create_task(_run_inline())
+
+    return {"ok": True, "competition_id": competition_id}

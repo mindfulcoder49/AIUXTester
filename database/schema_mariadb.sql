@@ -103,6 +103,45 @@ CREATE TABLE IF NOT EXISTS run_logs (
     CONSTRAINT fk_run_logs_session FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS competitions (
+    id          VARCHAR(64) PRIMARY KEY,
+    name        VARCHAR(255) NOT NULL,
+    description LONGTEXT NULL,
+    status      VARCHAR(32) NOT NULL DEFAULT 'open',
+    created_by  VARCHAR(64) NOT NULL,
+    created_at  VARCHAR(64) NOT NULL,
+    updated_at  VARCHAR(64) NOT NULL,
+    CONSTRAINT fk_competitions_user FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS competition_entries (
+    id             BIGINT AUTO_INCREMENT PRIMARY KEY,
+    competition_id VARCHAR(64) NOT NULL,
+    session_id     VARCHAR(64) NOT NULL,
+    user_id        VARCHAR(64) NOT NULL,
+    note           LONGTEXT NULL,
+    submitted_at   VARCHAR(64) NOT NULL,
+    UNIQUE KEY uq_competition_user (competition_id, user_id),
+    CONSTRAINT fk_comp_entries_competition FOREIGN KEY (competition_id) REFERENCES competitions(id) ON DELETE CASCADE,
+    CONSTRAINT fk_comp_entries_session FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+    CONSTRAINT fk_comp_entries_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS competition_matches (
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+    competition_id  VARCHAR(64) NOT NULL,
+    round_number    INT NOT NULL,
+    match_number    INT NOT NULL,
+    entry_ids       LONGTEXT NOT NULL,
+    winner_entry_id BIGINT NULL,
+    judge_reasoning LONGTEXT NULL,
+    status          VARCHAR(32) NOT NULL DEFAULT 'pending',
+    created_at      VARCHAR(64) NOT NULL,
+    updated_at      VARCHAR(64) NOT NULL,
+    CONSTRAINT fk_comp_matches_competition FOREIGN KEY (competition_id) REFERENCES competitions(id) ON DELETE CASCADE,
+    CONSTRAINT fk_comp_matches_winner FOREIGN KEY (winner_entry_id) REFERENCES competition_entries(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE INDEX IF NOT EXISTS idx_sessions_user_created_at ON sessions (user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_actions_session_step ON actions (session_id, step_number);
 CREATE INDEX IF NOT EXISTS idx_screenshots_session_step ON screenshots (session_id, step_number);

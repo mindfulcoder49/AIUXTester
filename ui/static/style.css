@@ -452,6 +452,156 @@ button:hover {
   padding: 10px 0;
 }
 
+/* ── Admin expanded styles ──────────────────────────────────────────────── */
+
+.tab-bar {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.tab-btn {
+  padding: 6px 16px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.88em;
+  transition: background 0.12s, color 0.12s;
+}
+.tab-btn:hover { background: var(--surface-2); color: var(--ink); }
+.tab-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+.admin-filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+  align-items: center;
+}
+.admin-filters input { flex: 1; min-width: 180px; }
+
+.table-wrap { overflow-x: auto; }
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88em;
+}
+.admin-table th {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 2px solid var(--line);
+  color: var(--muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.admin-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.admin-table .truncate {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.admin-table .memory-val {
+  font-family: monospace;
+  font-size: 0.9em;
+  word-break: break-all;
+  max-width: 500px;
+}
+.clickable-row { cursor: pointer; }
+.clickable-row:hover td { background: var(--surface-2); }
+
+/* ── Competition styles ─────────────────────────────────────────────────── */
+
+.competition-list,
+.competition-detail {
+  max-width: 900px;
+  margin: 32px auto;
+  padding: 24px;
+}
+
+.competition-card {
+  cursor: pointer;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  background: var(--surface-2);
+  transition: border-color 0.15s;
+}
+.competition-card:hover { border-color: var(--primary); }
+.competition-card-body { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.competition-card-meta { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+
+.entry-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  gap: 16px;
+}
+.entry-main { flex: 1; }
+.entry-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.entry-note { font-size: 0.85em; margin-top: 4px; }
+
+.admin-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* Bracket */
+.bracket { display: flex; gap: 24px; overflow-x: auto; padding-bottom: 8px; }
+.bracket-round { min-width: 200px; }
+.bracket-round h4 { margin: 0 0 10px; font-size: 0.85em; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.match-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  background: var(--surface);
+}
+.match-entry {
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  margin-bottom: 3px;
+  color: var(--ink);
+}
+.match-entry--winner {
+  background: #d4f0e2;
+  color: var(--ok);
+  font-weight: 600;
+}
+.match-reasoning { margin-top: 8px; font-size: 0.85em; color: var(--muted); }
+.match-reasoning summary { cursor: pointer; }
+.match-reasoning p { margin: 6px 0 0; }
+
+/* Submit modal */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000;
+}
+.modal-box {
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 28px;
+  width: 100%;
+  max-width: 460px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+}
+.modal-box h3 { margin: 0 0 16px; }
+.modal-box .row { margin-bottom: 12px; }
+.modal-box textarea { width: 100%; min-height: 80px; }
+.modal-box > div { display: flex; gap: 8px; margin-top: 16px; }
+
+.success { color: var(--ok); font-size: 0.9em; margin-top: 8px; }
+.error { color: var(--err); font-size: 0.9em; margin-top: 8px; }
+
 @media (max-width: 760px) {
   .auth,
   .dashboard,
@@ -459,7 +609,9 @@ button:hover {
   .admin,
   .costs,
   .home,
-  .docs {
+  .docs,
+  .competition-list,
+  .competition-detail {
     margin: 14px auto;
     padding: 12px;
   }

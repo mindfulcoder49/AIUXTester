@@ -1,0 +1,29 @@
+𝗪𝗲 𝘀𝘁𝗿𝗲𝘀𝘀 𝘁𝗲𝘀𝘁𝗲𝗱 𝗼𝘂𝗿 𝗔𝗜 𝗨𝗫 𝘁𝗲𝘀𝘁𝗶𝗻𝗴 𝗽𝗹𝗮𝘁𝗳𝗼𝗿𝗺 𝘁𝗼𝗱𝗮𝘆 𝗮𝗻𝗱 𝗶𝘁 𝘄𝗮𝘀 𝗰𝗵𝗮𝗼𝘁𝗶𝗰 𝗮𝗻𝗱 𝗶 𝗹𝗼𝘃𝗲𝗱 𝗶𝘁 🤖🔥
+
+20 autonomous browser agents. Simultaneously. Each one piloting a real Chromium instance, navigating live websites, and filing UX reports like a tiny unhinged intern army. 🪖🪖🪖🪖🪖🪖🪖🪖🪖🪖🪖🪖🪖🪖🪖🪖🪖🪖🪖🪖
+
+Here's what immediately exploded 💥
+
+𝗣𝗿𝗼𝗯𝗹𝗲𝗺 𝟭: 𝗧𝗵𝗲 𝗱𝗮𝘁𝗮𝗯𝗮𝘀𝗲 𝗱𝗶𝗲𝗱 𝗶𝗻𝘀𝘁𝗮𝗻𝘁𝗹𝘆 💀
+
+MariaDB got a 256MB memory limit and absolutely did not appreciate 20 workers asking it questions at the same time. It just. died. Fly.io sent me a very polite email about it. We bumped it to 1GB and moved on with our lives.
+
+𝗣𝗿𝗼𝗯𝗹𝗲𝗺 𝟮: 𝟭𝟭 𝗼𝘂𝘁 𝗼𝗳 𝟮𝟬 𝘁𝗲𝘀𝘁𝘀 𝗳𝗮𝗶𝗹𝗲𝗱 😵
+
+Shared CPU VMs. Twenty Chromium instances all trying to render screenshots at the same time on fractional CPUs. They were stepping on each other. Playwright gave up after 30 seconds on each one. The fix was upgrading to dedicated CPU machines, which costs approximately the same as a large coffee ☕ for a 3-hour run.
+
+𝗣𝗿𝗼𝗯𝗹𝗲𝗺 𝟯: 𝗮 𝘃𝗲𝗿𝘆 𝘀𝗽𝗲𝗰𝗶𝗳𝗶𝗰 𝗮𝗻𝗱 𝗱𝗲𝗹𝗶𝗴𝗵𝘁𝗳𝘂𝗹𝗹𝘆 𝘀𝘁𝘂𝗽𝗶𝗱 𝗣𝗹𝗮𝘆𝘄𝗿𝗶𝗴𝗵𝘁 𝗴𝗼𝘁𝗰𝗵𝗮 🎭
+
+`set_default_timeout()` does NOT cover navigation timeouts. There is a completely separate method for that. `set_default_navigation_timeout()`. They are different. They have always been different. This is documented. I did not read the documentation carefully enough. We fixed it.
+
+𝗧𝗵𝗲 𝗿𝗲𝘀𝘂𝗹𝘁𝘀 📊
+
+Run 1 — shared CPU, no timeout fix: 𝟵/𝟮𝟬 ✅
+Run 2 — dedicated CPU, 60s timeout: 𝟭𝟲/𝟮𝟬 ✅
+Run 3 — navigation timeout fixed: 𝟭𝟲/𝟮𝟬 ✅
+
+The remaining 4 failures? Pre-existing bugs that had nothing to do with concurrency. Which is 𝗲𝘅𝗮𝗰𝘁𝗹𝘆 𝘄𝗵𝗮𝘁 𝗮 𝘀𝘁𝗿𝗲𝘀𝘀 𝘁𝗲𝘀𝘁 𝗶𝘀 𝘀𝘂𝗽𝗽𝗼𝘀𝗲𝗱 𝘁𝗼 𝘁𝗲𝗹𝗹 𝘆𝗼𝘂. 🎯
+
+𝟮𝟬 𝘀𝗶𝗺𝘂𝗹𝘁𝗮𝗻𝗲𝗼𝘂𝘀 𝗔𝗜 𝗮𝗴𝗲𝗻𝘁𝘀. 𝗨𝗻𝗱𝗲𝗿 $𝟱. 𝗔𝗯𝗼𝘂𝘁 𝟯 𝗵𝗼𝘂𝗿𝘀 𝗼𝗳 𝗰𝗵𝗮𝗼𝘀. 𝗜 𝗿𝗲𝗴𝗿𝗲𝘁 𝗻𝗼𝘁𝗵𝗶𝗻𝗴. 🫡
+
+Stack: Playwright 🎭 LangGraph 🕸️ RQ + Redis 📬 FastAPI ⚡ Fly.io 🪰

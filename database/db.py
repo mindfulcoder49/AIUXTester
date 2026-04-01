@@ -104,6 +104,8 @@ async def init_db() -> None:
         return
 
     async with aiosqlite.connect(config.DATABASE_PATH) as db:
+        await db.execute("PRAGMA journal_mode=WAL")
+        await db.execute("PRAGMA busy_timeout=10000")
         schema_sql = SCHEMA_SQLITE_PATH.read_text()
         await db.executescript(schema_sql)
         await _sqlite_migrations(db)
@@ -122,6 +124,8 @@ async def open_db():
     else:
         async with aiosqlite.connect(config.DATABASE_PATH) as db:
             db.row_factory = aiosqlite.Row
+            await db.execute("PRAGMA journal_mode=WAL")
+            await db.execute("PRAGMA busy_timeout=10000")
             yield db
 
 
