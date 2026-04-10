@@ -3,9 +3,12 @@ __pycache__/
 *.pyc
 *.pyo
 node_modules/
+frontend-vue/node_modules/
+frontend-vue/dist/
 *.db
 *.db-wal
 *.db-shm
 .env
 .env.fly
 linkedin_post.txt
+tmp_*/

@@ -7,6 +7,8 @@ from passlib.context import CryptContext
 
 from config import JWT_ALGORITHM, JWT_SECRET, ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS
 
+MAGIC_LINK_EXPIRE_MINUTES = 15
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
@@ -35,3 +37,20 @@ def decode_token(token: str) -> Optional[dict]:
         return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
     except JWTError:
         return None
+
+
+def create_one_time_token(user_id: str, purpose: str) -> str:
+    """Create a short-lived JWT for password reset or magic link login."""
+    expire = datetime.utcnow() + timedelta(minutes=MAGIC_LINK_EXPIRE_MINUTES)
+    payload = {"sub": user_id, "exp": expire, "type": purpose, "jti": str(uuid4())}
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def decode_one_time_token(token: str, purpose: str) -> Optional[str]:
+    """Return user_id if the token is valid and matches purpose, else None."""
+    data = decode_token(token)
+    if not data:
+        return None
+    if data.get("type") != purpose:
+        return None
+    return data.get("sub")

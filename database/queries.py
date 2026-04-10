@@ -81,6 +81,12 @@ async def update_user_tier(db, user_id: str, tier: str) -> None:
     await _commit(db)
 
 
+async def update_user_password(db, user_id: str, password_hash: str) -> None:
+    ts = now_iso()
+    await _run(db, "UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?", (password_hash, ts, user_id))
+    await _commit(db)
+
+
 # Refresh tokens
 async def create_refresh_token(db, *, user_id: str, token: str, expires_at: str) -> None:
     ts = now_iso()
@@ -418,21 +424,235 @@ async def list_competition_entries(db, competition_id: str):
     )
 
 
-# Competition matches
-async def create_competition_match(
-    db, *, competition_id: str, round_number: int, match_number: int, entry_ids: list
+# Competition runs
+async def create_competition_run(
+    db,
+    *,
+    competition_id: str,
+    run_number: int,
+    pairing_strategy: str,
+    progression_mode: str,
+    pairing_seed: Optional[int],
+    provider: Optional[str],
+    model: Optional[str],
+    created_by: str,
+    status: str = "queued",
 ) -> int:
     ts = now_iso()
     row_id = await _run(
         db,
         """
-        INSERT INTO competition_matches (competition_id, round_number, match_number, entry_ids, status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, 'pending', ?, ?)
+        INSERT INTO competition_runs (
+            competition_id, run_number, pairing_strategy, progression_mode, pairing_seed,
+            provider, model, champion_entry_id, status, created_by,
+            created_at, updated_at, completed_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, NULL)
         """,
-        (competition_id, round_number, match_number, json.dumps(entry_ids), ts, ts),
+        (
+            competition_id,
+            run_number,
+            pairing_strategy,
+            progression_mode,
+            pairing_seed,
+            provider,
+            model,
+            status,
+            created_by,
+            ts,
+            ts,
+        ),
     )
     await _commit(db)
     return row_id
+
+
+async def get_competition_run(db, run_id: int):
+    return await _run(db, "SELECT * FROM competition_runs WHERE id = ?", (run_id,), fetch="one")
+
+
+async def get_first_competition_run(db, competition_id: str):
+    return await _run(
+        db,
+        "SELECT * FROM competition_runs WHERE competition_id = ? ORDER BY run_number ASC LIMIT 1",
+        (competition_id,),
+        fetch="one",
+    )
+
+
+async def get_latest_competition_run(db, competition_id: str):
+    return await _run(
+        db,
+        "SELECT * FROM competition_runs WHERE competition_id = ? ORDER BY run_number DESC LIMIT 1",
+        (competition_id,),
+        fetch="one",
+    )
+
+
+async def list_competition_runs(db, competition_id: str):
+    return await _run(
+        db,
+        "SELECT * FROM competition_runs WHERE competition_id = ? ORDER BY run_number DESC",
+        (competition_id,),
+        fetch="all",
+    )
+
+
+async def get_next_queued_competition_run(db, competition_id: str, *, progression_mode: Optional[str] = None):
+    query = "SELECT * FROM competition_runs WHERE competition_id = ? AND status = 'queued'"
+    params: list = [competition_id]
+    if progression_mode:
+        query += " AND progression_mode = ?"
+        params.append(progression_mode)
+    query += " ORDER BY run_number ASC LIMIT 1"
+    return await _run(db, query, tuple(params), fetch="one")
+
+
+async def get_next_competition_run_number(db, competition_id: str) -> int:
+    row = await _run(
+        db,
+        "SELECT COALESCE(MAX(run_number), 0) AS max_run_number FROM competition_runs WHERE competition_id = ?",
+        (competition_id,),
+        fetch="one",
+    )
+    max_run_number = row["max_run_number"] if row and row["max_run_number"] is not None else 0
+    return int(max_run_number) + 1
+
+
+async def update_competition_run_status(db, run_id: int, status: str) -> None:
+    ts = now_iso()
+    completed_at = ts if status in {"complete", "failed"} else None
+    await _run(
+        db,
+        "UPDATE competition_runs SET status = ?, updated_at = ?, completed_at = ? WHERE id = ?",
+        (status, ts, completed_at, run_id),
+    )
+    await _commit(db)
+
+
+async def complete_competition_run(db, run_id: int, champion_entry_id: Optional[int]) -> None:
+    ts = now_iso()
+    await _run(
+        db,
+        """
+        UPDATE competition_runs
+        SET champion_entry_id = ?, status = 'complete', updated_at = ?, completed_at = ?
+        WHERE id = ?
+        """,
+        (champion_entry_id, ts, ts, run_id),
+    )
+    await _commit(db)
+
+
+async def assign_unscoped_competition_matches_to_run(db, competition_id: str, run_id: int) -> None:
+    await _run(
+        db,
+        "UPDATE competition_matches SET run_id = ? WHERE competition_id = ? AND run_id IS NULL",
+        (run_id, competition_id),
+    )
+    await _commit(db)
+
+
+async def backfill_legacy_competition_runs(db) -> int:
+    competitions = await _run(
+        db,
+        """
+        SELECT c.*
+        FROM competitions c
+        WHERE EXISTS (
+            SELECT 1
+            FROM competition_matches m
+            WHERE m.competition_id = c.id
+        )
+        AND (
+            NOT EXISTS (
+                SELECT 1
+                FROM competition_runs r
+                WHERE r.competition_id = c.id
+            )
+            OR EXISTS (
+                SELECT 1
+                FROM competition_matches m2
+                WHERE m2.competition_id = c.id AND m2.run_id IS NULL
+            )
+        )
+        ORDER BY c.created_at ASC
+        """,
+        fetch="all",
+    )
+
+    created_count = 0
+    for competition in competitions:
+        matches = await list_competition_matches(db, competition["id"])
+        if not matches:
+            continue
+
+        run = await get_first_competition_run(db, competition["id"])
+        if not run:
+            created_count += 1
+            max_round = max(match["round_number"] for match in matches)
+            final_match = sorted(
+                [match for match in matches if match["round_number"] == max_round],
+                key=lambda item: item["match_number"],
+            )[-1]
+            champion_entry_id = final_match["winner_entry_id"]
+            created_at = min((match["created_at"] for match in matches), default=competition["created_at"])
+            updated_at = max((match["updated_at"] for match in matches), default=competition["updated_at"])
+            status = "complete" if champion_entry_id else "running"
+            run_id = await _run(
+                db,
+                """
+                INSERT INTO competition_runs (
+                    competition_id, run_number, pairing_strategy, progression_mode, pairing_seed,
+                    provider, model, champion_entry_id, status, created_by,
+                    created_at, updated_at, completed_at
+                )
+                VALUES (?, 1, 'legacy', 'automatic', NULL, NULL, NULL, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    competition["id"],
+                    champion_entry_id,
+                    status,
+                    competition["created_by"],
+                    created_at,
+                    updated_at,
+                    updated_at if status == "complete" else None,
+                ),
+            )
+            await _commit(db)
+        else:
+            run_id = run["id"]
+
+        await assign_unscoped_competition_matches_to_run(db, competition["id"], run_id)
+
+    return created_count
+
+
+# Competition matches
+async def create_competition_match(
+    db, *, competition_id: str, run_id: int, round_number: int, match_number: int, entry_ids: list
+) -> int:
+    ts = now_iso()
+    row_id = await _run(
+        db,
+        """
+        INSERT INTO competition_matches (competition_id, run_id, round_number, match_number, entry_ids, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
+        """,
+        (competition_id, run_id, round_number, match_number, json.dumps(entry_ids), ts, ts),
+    )
+    await _commit(db)
+    return row_id
+
+
+async def update_competition_match_status(db, match_id: int, status: str) -> None:
+    ts = now_iso()
+    await _run(
+        db,
+        "UPDATE competition_matches SET status = ?, updated_at = ? WHERE id = ?",
+        (status, ts, match_id),
+    )
+    await _commit(db)
 
 
 async def update_competition_match(db, match_id: int, *, winner_entry_id: int, reasoning: str) -> None:
@@ -445,10 +665,78 @@ async def update_competition_match(db, match_id: int, *, winner_entry_id: int, r
     await _commit(db)
 
 
-async def list_competition_matches(db, competition_id: str):
+async def list_competition_matches(db, competition_id: str, run_id: Optional[int] = None):
+    if run_id is None:
+        return await _run(
+            db,
+            """
+            SELECT *
+            FROM competition_matches
+            WHERE competition_id = ?
+            ORDER BY COALESCE(run_id, 0) ASC, round_number ASC, match_number ASC
+            """,
+            (competition_id,),
+            fetch="all",
+        )
     return await _run(
         db,
-        "SELECT * FROM competition_matches WHERE competition_id = ? ORDER BY round_number ASC, match_number ASC",
+        """
+        SELECT *
+        FROM competition_matches
+        WHERE competition_id = ? AND run_id = ?
+        ORDER BY round_number ASC, match_number ASC
+        """,
+        (competition_id, run_id),
+        fetch="all",
+    )
+
+
+async def get_first_screenshot(db, session_id: str):
+    return await _run(
+        db,
+        "SELECT * FROM screenshots WHERE session_id = ? ORDER BY step_number ASC, id ASC LIMIT 1",
+        (session_id,),
+        fetch="one",
+    )
+
+
+# Competition recaps
+async def create_competition_recap(
+    db,
+    *,
+    competition_id: str,
+    entry_profiles: str,
+    overall_narrative: str,
+    provider: str,
+    model: str,
+) -> int:
+    ts = now_iso()
+    row_id = await _run(
+        db,
+        """
+        INSERT INTO competition_recaps
+            (competition_id, entry_profiles, overall_narrative, provider, model, generated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (competition_id, entry_profiles, overall_narrative, provider, model, ts),
+    )
+    await _commit(db)
+    return row_id
+
+
+async def get_latest_competition_recap(db, competition_id: str):
+    return await _run(
+        db,
+        "SELECT * FROM competition_recaps WHERE competition_id = ? ORDER BY id DESC LIMIT 1",
+        (competition_id,),
+        fetch="one",
+    )
+
+
+async def list_competition_recaps(db, competition_id: str):
+    return await _run(
+        db,
+        "SELECT id, competition_id, provider, model, generated_at FROM competition_recaps WHERE competition_id = ? ORDER BY id DESC",
         (competition_id,),
         fetch="all",
     )

@@ -119,9 +119,28 @@ CREATE TABLE IF NOT EXISTS competition_entries (
     UNIQUE(competition_id, user_id)
 );
 
+CREATE TABLE IF NOT EXISTS competition_runs (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    competition_id    TEXT NOT NULL REFERENCES competitions(id),
+    run_number        INTEGER NOT NULL,
+    pairing_strategy  TEXT NOT NULL DEFAULT 'balanced_random',
+    progression_mode  TEXT NOT NULL DEFAULT 'automatic',  -- automatic | manual
+    pairing_seed      INTEGER,
+    provider          TEXT,
+    model             TEXT,
+    champion_entry_id INTEGER REFERENCES competition_entries(id),
+    status            TEXT NOT NULL DEFAULT 'queued',  -- queued | running | complete | failed
+    created_by        TEXT NOT NULL REFERENCES users(id),
+    created_at        TEXT NOT NULL,
+    updated_at        TEXT NOT NULL,
+    completed_at      TEXT,
+    UNIQUE(competition_id, run_number)
+);
+
 CREATE TABLE IF NOT EXISTS competition_matches (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     competition_id  TEXT NOT NULL REFERENCES competitions(id),
+    run_id          INTEGER REFERENCES competition_runs(id),
     round_number    INTEGER NOT NULL,
     match_number    INTEGER NOT NULL,
     entry_ids       TEXT NOT NULL,
@@ -130,4 +149,14 @@ CREATE TABLE IF NOT EXISTS competition_matches (
     status          TEXT NOT NULL DEFAULT 'pending',  -- pending | complete
     created_at      TEXT NOT NULL,
     updated_at      TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS competition_recaps (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    competition_id    TEXT NOT NULL REFERENCES competitions(id),
+    entry_profiles    TEXT NOT NULL,  -- JSON: {"<entry_id>": "<profile text>", ...}
+    overall_narrative TEXT NOT NULL,
+    provider          TEXT NOT NULL,
+    model             TEXT NOT NULL,
+    generated_at      TEXT NOT NULL
 );

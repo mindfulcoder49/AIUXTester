@@ -1,0 +1,38 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap");
+
+:root {
+  color-scheme: light;
+  --bg: #06131e;
+  --bg-soft: #0d1f2d;
+  --surface: rgba(9, 23, 35, 0.78);
+  --surface-strong: rgba(8, 18, 29, 0.9);
+  --surface-muted: rgba(15, 32, 48, 0.62);
+  --surface-card: rgba(245, 249, 253, 0.98);
+  --surface-card-strong: #ffffff;
+  --ink: #0d2030;
+  --ink-soft: #345165;
+  --ink-inverse: #f6fbff;
+  --line: rgba(91, 127, 158, 0.18);
+  --line-strong: rgba(117, 164, 197, 0.35);
+  --primary: #0e8bb8;
+  --primary-strong: #0a6888;
+  --primary-soft: rgba(14, 139, 184, 0.12);
+  --accent: #ff7a45;
+  --accent-soft: rgba(255, 122, 69, 0.14);
+  --ok: #26b67c;
+  --warn: #d8a03c;
+  --err: #e55a63;
+  --shadow-lg: 0 28px 80px rgba(2, 8, 14, 0.24);
+  --shadow-md: 0 20px 48px rgba(8, 20, 32, 0.12);
+  --shadow-sm: 0 12px 24px rgba(10, 20, 32, 0.08);
+  --radius-xl: 28px;
+  --radius-lg: 20px;
+  --radius-md: 14px;
+  --radius-sm: 10px;
+  --content-width: min(1240px, calc(100% - 40px));
+  --content-width-wide: min(1500px, calc(100% - 40px));
+  --shell-width: min(1320px, calc(100% - 40px));
+  --transition-fast: 160ms cubic-bezier(0.22, 1, 0.36, 1);
+  --transition-base: 260ms cubic-bezier(0.22, 1, 0.36, 1);
+  --transition-slow: 500ms cubic-bezier(0.22, 1, 0.36, 1);
+}

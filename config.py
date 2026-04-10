@@ -29,6 +29,21 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
+# Email / SMTP
+SMTP_HOST     = os.getenv("SMTP_HOST", "")
+SMTP_PORT     = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER     = os.getenv("SMTP_USER", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+SMTP_FROM     = os.getenv("SMTP_FROM", "noreply@aiuxtester.fly.dev")
+APP_BASE_URL  = os.getenv("APP_BASE_URL", "https://aiuxtester.fly.dev")
+
+# VibeCode International export
+VIBECODE_EXPORT_URL = os.getenv(
+    "VIBECODE_EXPORT_URL",
+    "https://vibecodeinternational.com/admin/victory-games/app-run-import",
+)
+VIBECODE_EXPORT_TOKEN = os.getenv("VIBECODE_EXPORT_TOKEN", "")
+
 VIEWPORT_DESKTOP = {"width": 1280, "height": 800}
 VIEWPORT_MOBILE = {"width": 390, "height": 844}
 
@@ -122,13 +137,13 @@ MODEL_REGISTRY: Dict[str, Dict[str, List[str]]] = {
         "pro": ["gpt-4o-mini", "gpt-4o", "gpt-4.1", "gpt-5-mini", "gpt-5"],
     },
     "gemini": {
-        "free": ["gemini-1.5-flash"],
-        "basic": ["gemini-1.5-flash", "gemini-1.5-pro"],
-        "pro": ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-pro"],
+        "free": ["gemini-2.5-flash-lite"],
+        "basic": ["gemini-2.5-flash-lite"],
+        "pro": ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro"],
     },
     "claude": {
-        "free": ["claude-3-haiku-20240307"],
-        "basic": ["claude-3-haiku-20240307", "claude-3-sonnet-20240229"],
-        "pro": ["claude-3-haiku-20240307", "claude-3-sonnet-20240229", "claude-3-opus-20240229"],
+        "free": ["claude-haiku-4-5"],
+        "basic": ["claude-haiku-4-5"],
+        "pro": ["claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-6"],
     },
 }

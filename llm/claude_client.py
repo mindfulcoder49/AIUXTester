@@ -2,7 +2,7 @@ import base64
 from typing import List, Type
 
 import anthropic
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from config import ANTHROPIC_API_KEY
 from llm.utils import extract_json
@@ -38,8 +38,8 @@ class ClaudeClient:
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": user_prompt},
                     *self._encode_images(images),
+                    {"type": "text", "text": user_prompt},
                 ],
             }
         ]
@@ -52,4 +52,9 @@ class ClaudeClient:
         )
         text = "".join([block.text for block in response.content if getattr(block, "text", None)])
         data = extract_json(text)
-        return schema.model_validate(data)
+        try:
+            return schema.model_validate(data)
+        except ValidationError:
+            if isinstance(data, str):
+                return schema.model_validate_json(data)
+            raise

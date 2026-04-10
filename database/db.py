@@ -69,6 +69,12 @@ async def _sqlite_migrations(db: aiosqlite.Connection) -> None:
         await db.execute("ALTER TABLE actions ADD COLUMN intent TEXT")
     if "action_result" not in cols:
         await db.execute("ALTER TABLE actions ADD COLUMN action_result TEXT")
+    comp_run_cols = {row[1] for row in await (await db.execute("PRAGMA table_info(competition_runs)")).fetchall()}
+    if "progression_mode" not in comp_run_cols:
+        await db.execute("ALTER TABLE competition_runs ADD COLUMN progression_mode TEXT NOT NULL DEFAULT 'automatic'")
+    comp_match_cols = {row[1] for row in await (await db.execute("PRAGMA table_info(competition_matches)")).fetchall()}
+    if "run_id" not in comp_match_cols:
+        await db.execute("ALTER TABLE competition_matches ADD COLUMN run_id INTEGER")
 
 
 async def _mariadb_migrations(conn) -> None:
@@ -87,6 +93,28 @@ async def _mariadb_migrations(conn) -> None:
             await cur.execute("ALTER TABLE actions ADD COLUMN intent TEXT NULL")
         if "action_result" not in cols:
             await cur.execute("ALTER TABLE actions ADD COLUMN action_result TEXT NULL")
+        await cur.execute(
+            """
+            SELECT COLUMN_NAME
+            FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'competition_runs'
+            """
+        )
+        comp_run_cols = {row["COLUMN_NAME"] for row in await cur.fetchall()}
+        if "progression_mode" not in comp_run_cols:
+            await cur.execute(
+                "ALTER TABLE competition_runs ADD COLUMN progression_mode VARCHAR(32) NOT NULL DEFAULT 'automatic'"
+            )
+        await cur.execute(
+            """
+            SELECT COLUMN_NAME
+            FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'competition_matches'
+            """
+        )
+        comp_match_cols = {row["COLUMN_NAME"] for row in await cur.fetchall()}
+        if "run_id" not in comp_match_cols:
+            await cur.execute("ALTER TABLE competition_matches ADD COLUMN run_id BIGINT NULL")
 
 
 async def init_db() -> None:

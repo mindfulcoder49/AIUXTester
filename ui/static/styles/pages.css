@@ -1,0 +1,237 @@
+.wizard-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.wizard-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  color: var(--ink-soft);
+  background: rgba(216, 230, 241, 0.76);
+}
+
+.wizard-step span {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.wizard-step.is-active {
+  color: #fff;
+  background: linear-gradient(135deg, var(--primary), var(--primary-strong));
+}
+
+.wizard-step.is-complete {
+  color: var(--ok);
+  background: rgba(38, 182, 124, 0.12);
+}
+
+.wizard-step.is-active span {
+  color: var(--ink);
+}
+
+.control-block {
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+  border: 1px solid rgba(117, 164, 197, 0.16);
+  border-radius: var(--radius-lg);
+  background: rgba(237, 245, 251, 0.62);
+}
+
+.feature-list {
+  grid-template-columns: 1fr;
+}
+
+.hero-actions {
+  justify-content: flex-end;
+}
+
+.detail-sidebar {
+  display: grid;
+  gap: 24px;
+}
+
+.competition-groups {
+  display: grid;
+  gap: 24px;
+}
+
+.competition-card--broadcast strong,
+.session-card strong,
+.entry-card strong,
+.feature-card strong {
+  font-size: 20px;
+}
+
+.competition-detail-layout .panel-surface {
+  min-height: 100%;
+}
+
+.champion-banner {
+  margin-bottom: 24px;
+  background:
+    linear-gradient(145deg, rgba(8, 20, 31, 0.94), rgba(17, 42, 60, 0.82)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.1), transparent);
+  color: var(--ink-inverse);
+}
+
+.champion-banner .section-kicker,
+.champion-banner p {
+  color: rgba(246, 251, 255, 0.78);
+}
+
+.admin-control-cluster {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.bracket-shell {
+  overflow: hidden;
+}
+
+.bracket-scroll {
+  overflow-x: auto;
+  padding-bottom: 12px;
+}
+
+.bracket-stage {
+  position: relative;
+  padding-top: 44px;
+}
+
+.bracket-svg {
+  position: absolute;
+  inset: 44px 0 0 0;
+  width: 100%;
+  height: calc(100% - 44px);
+  overflow: visible;
+}
+
+.bracket-svg line {
+  stroke: rgba(14, 139, 184, 0.26);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.bracket-round-label {
+  position: absolute;
+  top: 0;
+  width: 248px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.match-card--tournament {
+  position: absolute;
+  top: 44px;
+  left: 0;
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(117, 164, 197, 0.18);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(244, 250, 255, 0.98));
+  box-shadow: var(--shadow-sm);
+  transform-origin: center;
+  transition: transform var(--transition-base), box-shadow var(--transition-base), border-color var(--transition-base);
+}
+
+.match-card--tournament:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: rgba(14, 139, 184, 0.32);
+}
+
+.match-entry-list {
+  display: grid;
+  gap: 8px;
+}
+
+.match-entry {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(231, 241, 248, 0.72);
+}
+
+.match-entry strong {
+  font-size: 14px;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.match-entry span {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.match-entry.is-winner {
+  background: rgba(38, 182, 124, 0.14);
+  color: var(--ok);
+}
+
+.match-entry.is-winner span {
+  color: rgba(20, 124, 82, 0.82);
+}
+
+.match-card__topline,
+.match-reasoning {
+  color: var(--ink-soft);
+}
+
+.bullet-list {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 8px;
+}
+
+.group-count {
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.composer-panel {
+  align-self: start;
+}
+
+@media (max-width: 1180px) {
+  .hero-actions,
+  .admin-control-cluster {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 760px) {
+  .competition-card--broadcast strong,
+  .session-card strong,
+  .entry-card strong,
+  .feature-card strong {
+    font-size: 18px;
+  }
+
+  .wizard-steps {
+    display: grid;
+  }
+
+  .bracket-round-label {
+    width: 220px;
+  }
+}

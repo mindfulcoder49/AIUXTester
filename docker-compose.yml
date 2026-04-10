@@ -27,11 +27,14 @@ services:
       retries: 20
 
   web:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.vue
     ports:
       - "8001:8080"
     environment:
       PORT: "8080"
+      UI_VARIANT: vue
       DB_BACKEND: mariadb
       DATABASE_URL: mysql://aiuxtester:aiuxtester@mariadb:3306/aiuxtester
       QUEUE_MODE: redis
@@ -44,6 +47,11 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      VIBECODE_EXPORT_URL: ${VIBECODE_EXPORT_URL:-https://vibecodeinternational.com/admin/victory-games/app-run-import}
+      VIBECODE_EXPORT_TOKEN: ${VIBECODE_EXPORT_TOKEN:-}
+      APP_BASE_URL: ${APP_BASE_URL:-https://aiuxtester.fly.dev}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       mariadb:
         condition: service_healthy
@@ -51,7 +59,9 @@ services:
         condition: service_healthy
 
   worker:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     command: python worker_main.py
     environment:
       DB_BACKEND: mariadb

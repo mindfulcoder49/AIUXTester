@@ -252,9 +252,32 @@ def build_graph(db, emit: Callable[[dict], None]):
         return state
 
     async def capture(state: AgentState):
-        if state["status"] != "running":
-            return state
         last_action = state.get("last_action") or {}
+        if state["status"] != "running":
+            # Terminal action (finish/fail/give_up) — save the action record
+            # linked to the last screenshot taken, but don't capture a new screenshot.
+            action_type = last_action.get("action_type")
+            if action_type:
+                step = state["current_step"] + 1
+                action_params = last_action.get("action_params")
+                if not isinstance(action_params, dict):
+                    action_params = {}
+                await insert_action(
+                    db,
+                    session_id=state["session_id"],
+                    step_number=step,
+                    action_type=action_type,
+                    action_params=action_params,
+                    intent=last_action.get("intent"),
+                    reasoning=last_action.get("reasoning", ""),
+                    action_result=last_action.get("execution_result"),
+                    screenshot_id=state.get("current_screenshot_id"),
+                    success=bool(last_action.get("success", True)),
+                    error_message=last_action.get("error"),
+                )
+                state["current_step"] = step
+                state["last_action"] = None
+            return state
         step = state["current_step"] + 1
         png = await browser.screenshot()
         html_raw = await browser.get_html()
